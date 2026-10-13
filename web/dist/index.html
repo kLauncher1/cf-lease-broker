@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CF-Lease-Broker · Cloudflare Multi-Account Resource Pooling</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #070b14;
+      --bg-surface: #0f172a;
+      --bg-surface-elevated: #1e293b;
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-cf: #f38020;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-cf: #f38020;
+      --accent-green: #10b981;
+      --accent-blue: #38bdf8;
+      --accent-red: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: 'Inter', -apple-system, sans-serif;
+      min-height: 100vh;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border-subtle);
+      margin-bottom: 28px;
+    }
+    .logo-area { display: flex; align-items: center; gap: 12px; }
+    .logo-badge {
+      background: linear-gradient(135deg, #ea580c, #f38020);
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 6px 14px;
+      border-radius: 8px;
+      letter-spacing: 0.5px;
+    }
+    .logo-title { font-size: 20px; font-weight: 700; }
+    .header-meta { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--text-muted); }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--accent-green);
+      box-shadow: 0 0 10px var(--accent-green);
+    }
+    .grid-accounts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .account-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 20px;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .account-card:hover { border-color: rgba(243, 128, 32, 0.4); transform: translateY(-2px); }
+    .acc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .acc-name { font-size: 15px; font-weight: 600; }
+    .acc-plan { font-size: 11px; background: rgba(243, 128, 32, 0.15); color: var(--accent-cf); padding: 2px 8px; border-radius: 999px; }
+    .quota-bar-wrapper { margin: 14px 0; }
+    .quota-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+    .quota-bar-bg { width: 100%; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; }
+    .quota-bar-fill { height: 100%; background: linear-gradient(90deg, #f38020, #fbbf24); border-radius: 3px; }
+    .acc-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .section-title { font-size: 16px; font-weight: 600; }
+    .action-btn {
+      background: linear-gradient(135deg, #ea580c, #f38020);
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+    .action-btn:hover { opacity: 0.9; }
+
+    .leases-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 32px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .leases-table th, .leases-table td {
+      padding: 14px 18px;
+      text-align: left;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .leases-table th {
+      background: var(--bg-surface-elevated);
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+    }
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pill-active { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); }
+    .pill-revoked { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
+    .btn-revoke {
+      background: transparent;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: var(--accent-red);
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn-revoke:hover { background: rgba(239, 68, 68, 0.1); }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="logo-area">
+      <div class="logo-badge">CF-LEASE-BROKER</div>
+      <div class="logo-title">Cloudflare Multi-Account Resource Pooling</div>
+    </div>
+    <div class="header-meta">
+      <span class="pulse-dot"></span>
+      <span id="cf-connectivity">Edge Connectivity: Live</span>
+      <span>•</span>
+      <span id="active-leases-count">Active Leases: Loading...</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="section-header">
+      <span class="section-title">Pooled Cloudflare Accounts</span>
+    </div>
+    <section class="grid-accounts" id="accounts-grid">
+      <!-- Injected by JavaScript -->
+    </section>
+
+    <div class="section-header">
+      <span class="section-title">Active Dynamic Resource Leases</span>
+      <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
+    </div>
+
+    <table class="leases-table">
+      <thead>
+        <tr>
+          <th>Lease ID</th>
+          <th>Target Service</th>
+          <th>Resource Type</th>
+          <th>Allocated Tenant</th>
+          <th>Endpoint URL</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="leases-body">
+        <tr>
+          <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">
+            Loading active leases...
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+
+  <script>
+    async function loadState() {
+      try {
+        const [accRes, leaseRes] = await Promise.all([
+          fetch('/api/accounts').then(r => r.json()),
+          fetch('/api/leases').then(r => r.json())
+        ]);
+
+        // Render accounts
+        const grid = document.getElementById('accounts-grid');
+        grid.innerHTML = accRes.map(acc => {
+          const pct = Math.min(100, (acc.worker_used / acc.worker_limit) * 100);
+          return `
+            <div class="account-card">
+              <div class="acc-header">
+                <span class="acc-name">${acc.alias}</span>
+                <span class="acc-plan">${acc.plan}</span>
+              </div>
+              <div class="quota-bar-wrapper">
+                <div class="quota-label">
+                  <span>Workers Daily Usage</span>
+                  <span>${acc.worker_used.toLocaleString()} / ${acc.worker_limit.toLocaleString()} (${pct.toFixed(1)}%)</span>
+                </div>
+                <div class="quota-bar-bg">
+                  <div class="quota-bar-fill" style="width: ${pct}%"></div>
+                </div>
+              </div>
+              <div class="acc-meta">
+                <span>R2: ${acc.r2_storage_mb} MB</span>
+                <span>KV Reads: ${acc.kv_read_count.toLocaleString()}</span>
+                <span style="color: ${acc.is_healthy ? '#10b981' : '#ef4444'}">${acc.is_healthy ? 'HEALTHY' : 'FAILED'}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Render leases
+        const tbody = document.getElementById('leases-body');
+        const activeCount = leaseRes.filter(l => !l.is_revoked).length;
+        document.getElementById('active-leases-count').textContent = `Active Leases: ${activeCount}`;
+
+        if (leaseRes.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 24px;">No active leases issued. Click "+ Issue New Lease" to create one.</td></tr>`;
+        } else {
+          tbody.innerHTML = leaseRes.map(l => `
+            <tr>
+              <td style="font-family: monospace; font-weight: 600; color: #f38020;">${l.lease_id}</td>
+              <td style="font-weight: 600;">${l.target_service}</td>
+              <td><span class="pill pill-active">${l.resource_type}</span></td>
+              <td style="font-family: monospace; color: #94a3b8;">${l.account_id}</td>
+              <td style="font-family: monospace; font-size: 11px; color: #38bdf8;">${l.endpoint_url}</td>
+              <td><span class="pill ${l.is_revoked ? 'pill-revoked' : 'pill-active'}">${l.is_revoked ? 'REVOKED' : 'ACTIVE'}</span></td>
+              <td>
+                ${!l.is_revoked ? `<button class="btn-revoke" onclick="revokeLease('${l.lease_id}')">Revoke</button>` : '-'}
+              </td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        console.error('Failed to load state:', err);
+      }
+    }
+
+    async function issueQuickLease() {
+      const serviceName = prompt('Enter target microservice name (e.g. auth-gateway, media-api):', 'auth-gateway-' + Math.floor(Math.random() * 900 + 100));
+      if (!serviceName) return;
+
+      await fetch('/api/leases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_service: serviceName, resource_type: 'Workers', duration_hours: 24 })
+      });
+      loadState();
+    }
+
+    async function revokeLease(leaseId) {
+      if (!confirm(`Are you sure you want to revoke lease ${leaseId}?`)) return;
+      await fetch(`/api/leases/revoke?id=${leaseId}`, { method: 'POST' });
+      loadState();
+    }
+
+    loadState();
+    setInterval(loadState, 2000);
+  </script>
+</body>
+</html>
