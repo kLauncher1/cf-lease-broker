@@ -1,0 +1,19 @@
+# Security Policy
+
+## Supported Versions
+
+| Version | Supported          |
+| ------- | ------------------ |
+| 0.1.x   | :white_check_mark: |
+
+## Reporting a Vulnerability
+
+We prioritize the security of `cf-lease-broker` and its token delegation infrastructure. If you discover a security vulnerability:
+
+1. **Email Disclosure**: Send details to the repository maintainer.
+2. **Details to Include**:
+   - Description of the issue and potential impact on Cloudflare API tokens.
+   - Minimal reproducible steps or proof-of-concept payload.
+   - Suggested mitigation steps if available.
+
+We kindly request reasonable time to investigate and patch vulnerabilities before public disclosure.
