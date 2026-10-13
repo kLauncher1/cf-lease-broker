@@ -167,6 +167,41 @@
     </section>
 
     <div class="section-header">
+      <span class="section-title">Transparent Failover Proxy (<code style="font-family: 'JetBrains Mono', monospace; color: var(--accent-cf); font-size: 14px;">/proxy/{service}/*</code>)</span>
+      <span style="font-size: 12px; color: var(--text-muted);">Zero-Downtime Rate-Limit Interception</span>
+    </div>
+
+    <section class="proxy-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-cf);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Dynamic Routing Route</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-main); word-break: break-all;">/proxy/{service}/{subpath}</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Maps to optimal tenant with highest available quota</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-green);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Failover Interception Status</div>
+          <div style="font-size: 13px; font-weight: 600; color: var(--accent-green);" id="proxy-interception-status">Active (429, 502, 503, 504)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Automatic multi-account hop with buffered payload</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-blue);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Last Forwarded Telemetry</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-blue);" id="proxy-telemetry-status">Idle (Awaiting Traffic)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Headers: X-CF-Broker-Account &amp; Attempts</div>
+        </div>
+      </div>
+
+      <!-- Quick Interactive Proxy Tester -->
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px;">
+        <span style="font-size: 12px; font-weight: 600; color: var(--text-muted);">Route Tester:</span>
+        <input type="text" id="proxy-test-service" placeholder="service (e.g. auth-gateway)" value="auth-gateway" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none;">
+        <span style="color: var(--text-muted); font-family: monospace;">/</span>
+        <input type="text" id="proxy-test-path" placeholder="subpath (e.g. v1/health)" value="v1/status" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; flex-grow: 1; min-width: 140px;">
+        <button class="action-btn" onclick="testProxyRoute()" style="padding: 6px 14px; font-size: 12px;">Send Test Request</button>
+      </div>
+      <div id="proxy-test-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle);"></div>
+    </section>
+
+    <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
       <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
     </div>
@@ -272,6 +307,49 @@
       if (!confirm(`Are you sure you want to revoke lease ${leaseId}?`)) return;
       await fetch(`/api/leases/revoke?id=${leaseId}`, { method: 'POST' });
       loadState();
+    }
+
+    async function testProxyRoute() {
+      const service = document.getElementById('proxy-test-service').value.trim();
+      const subpath = document.getElementById('proxy-test-path').value.trim();
+      const resBox = document.getElementById('proxy-test-result');
+      const telemBox = document.getElementById('proxy-telemetry-status');
+
+      if (!service) {
+        alert('Please specify a service name');
+        return;
+      }
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Dispatching test request through /proxy/${service}/${subpath}...`;
+
+      try {
+        const start = performance.now();
+        const res = await fetch(`/proxy/${service}/${subpath}`);
+        const elapsed = Math.round(performance.now() - start);
+
+        const brokerAccount = res.headers.get('X-CF-Broker-Account') || 'none';
+        const brokerAttempts = res.headers.get('X-CF-Broker-Attempts') || '1';
+
+        telemBox.textContent = `${brokerAccount} (${brokerAttempts} attempt${brokerAttempts > 1 ? 's' : ''})`;
+
+        let bodyText = await res.text();
+        try {
+          bodyText = JSON.stringify(JSON.parse(bodyText), null, 2);
+        } catch (_) {}
+
+        resBox.innerHTML = `
+          <div style="color: ${res.ok ? '#10b981' : '#ef4444'}; font-weight: 600; margin-bottom: 6px;">
+            HTTP ${res.status} ${res.statusText} (${elapsed}ms)
+          </div>
+          <div><strong>X-CF-Broker-Account:</strong> ${brokerAccount}</div>
+          <div><strong>X-CF-Broker-Attempts:</strong> ${brokerAttempts}</div>
+          <pre style="margin-top: 8px; color: #f8fafc; white-space: pre-wrap; max-height: 150px; overflow-y: auto;">${bodyText}</pre>
+        `;
+        loadState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Network / Dispatch Error: ${err.message}</span>`;
+      }
     }
 
     loadState();
