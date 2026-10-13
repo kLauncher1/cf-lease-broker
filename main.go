@@ -13,6 +13,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/broker"
 	"github.com/kLauncher1/cf-lease-broker/internal/cloudflare"
 	"github.com/kLauncher1/cf-lease-broker/internal/proxy"
+	"github.com/kLauncher1/cf-lease-broker/internal/storage"
 )
 
 //go:embed web/dist/*
@@ -34,8 +35,20 @@ func main() {
 	leaseEng := broker.NewLeaseEngine(poolMgr)
 	cfClient := cloudflare.NewClient()
 	proxyHandler := proxy.NewProxyHandler(poolMgr, leaseEng)
+	webhookDispatcher := storage.NewWebhookDispatcher(os.Getenv("WEBHOOK_URL"))
+	kvCache := storage.NewKVCacheLayer(poolMgr)
+	r2Gateway := storage.NewR2Gateway(poolMgr, kvCache, webhookDispatcher, storage.DefaultChunkSize)
 
 	mux := http.NewServeMux()
+
+	// Virtual R2 S3-Compatible Gateway (/s3/{bucket}/{key...})
+	mux.Handle("/s3/", r2Gateway)
+
+	// Multi-Account Partitioned KV API (/api/kv/*)
+	mux.Handle("/api/kv/", kvCache)
+
+	// Outgoing Quota Alerts & Webhooks API (/api/webhooks/*)
+	mux.Handle("/api/webhooks/", webhookDispatcher)
 
 	// Transparent Reverse Proxy with 429 Rate-Limit Interception
 	mux.Handle("/proxy/", proxyHandler)
