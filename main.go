@@ -12,6 +12,7 @@ import (
 
 	"github.com/kLauncher1/cf-lease-broker/internal/broker"
 	"github.com/kLauncher1/cf-lease-broker/internal/cloudflare"
+	"github.com/kLauncher1/cf-lease-broker/internal/proxy"
 )
 
 //go:embed web/dist/*
@@ -32,8 +33,12 @@ func main() {
 	poolMgr := broker.NewPoolManager()
 	leaseEng := broker.NewLeaseEngine(poolMgr)
 	cfClient := cloudflare.NewClient()
+	proxyHandler := proxy.NewProxyHandler(poolMgr, leaseEng)
 
 	mux := http.NewServeMux()
+
+	// Transparent Reverse Proxy with 429 Rate-Limit Interception
+	mux.Handle("/proxy/", proxyHandler)
 
 	// API: List pooled Cloudflare accounts
 	mux.HandleFunc("/api/accounts", func(w http.ResponseWriter, r *http.Request) {

@@ -4,7 +4,7 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 
 ---
 
-## Current Release: v0.1.0 (Foundation)
+## Release: v0.1.0 (Foundation)
 - [x] Multi-tenant Cloudflare account pool manager with real-time quota telemetry.
 - [x] Dynamic lease engine issuing scoped resource vouchers (`lse_...`) and tokens.
 - [x] Immediate lease revocation and failover rerouting logic.
@@ -13,10 +13,13 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 
 ---
 
-## Milestone 2: v0.2.0 (Automated Rate-Limit Interception)
-- [ ] Direct Cloudflare API reverse proxy intercepting 429 Too Many Requests responses.
-- [ ] Automatic zero-downtime hot-swap of API tokens without client reconfiguration.
-- [ ] Prometheus metrics endpoint (`/metrics`) exposing active lease counts and tenant health.
+## Release: v0.2.0 (Automated Rate-Limit Interception & Failover)
+- [x] Direct Cloudflare API reverse proxy intercepting 429 Too Many Requests responses.
+- [x] Automatic zero-downtime hot-swap of accounts with buffered request retries.
+- [x] Route pattern `/proxy/{service}/*` with transparent endpoint dispatching.
+- [x] Broker telemetry headers (`X-CF-Broker-Account`, `X-CF-Broker-Attempts`).
+- [x] RFC 7230 hop-by-hop header sanitization and stream multiplexing.
+- [x] Interactive proxy route tester integrated into embedded dashboard.
 
 ---
 
