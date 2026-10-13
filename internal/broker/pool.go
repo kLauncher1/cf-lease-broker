@@ -117,3 +117,75 @@ func (pm *PoolManager) TriggerFailover(accountID string) error {
 	acc.LastFailoverAt = time.Now().UTC()
 	return nil
 }
+
+// ListHealthyAccountIDs returns IDs of all currently healthy accounts.
+func (pm *PoolManager) ListHealthyAccountIDs() []string {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	var ids []string
+	for id, acc := range pm.accounts {
+		if acc.IsHealthy {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// UpdateR2Storage adjusts the recorded R2 storage consumption for an account.
+func (pm *PoolManager) UpdateR2Storage(accountID string, deltaMB float64) error {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	acc, exists := pm.accounts[accountID]
+	if !exists {
+		return errors.New("account not found")
+	}
+
+	acc.R2StorageMB += deltaMB
+	if acc.R2StorageMB < 0 {
+		acc.R2StorageMB = 0
+	}
+	return nil
+}
+
+// IncrementKVRead increments the KV read counter for an account.
+func (pm *PoolManager) IncrementKVRead(accountID string) error {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	acc, exists := pm.accounts[accountID]
+	if !exists {
+		return errors.New("account not found")
+	}
+
+	acc.KVReadCount++
+	return nil
+}
+
+// IncrementWorkerUsed increments the Worker daily request counter.
+func (pm *PoolManager) IncrementWorkerUsed(accountID string, delta int64) error {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	acc, exists := pm.accounts[accountID]
+	if !exists {
+		return errors.New("account not found")
+	}
+
+	acc.WorkerUsed += delta
+	return nil
+}
+
+// GetAccount returns a copy of the specified account status.
+func (pm *PoolManager) GetAccount(accountID string) (*AccountStatus, error) {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	acc, exists := pm.accounts[accountID]
+	if !exists {
+		return nil, errors.New("account not found")
+	}
+	cpy := *acc
+	return &cpy, nil
+}

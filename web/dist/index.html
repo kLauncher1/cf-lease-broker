@@ -201,6 +201,53 @@
       <div id="proxy-test-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle);"></div>
     </section>
 
+    <!-- Virtual R2 S3-Compatible Gateway & Multi-Account KV -->
+    <div class="section-header">
+      <span class="section-title">Virtual R2 S3 Gateway &amp; Multi-Account KV (<code style="font-family: 'JetBrains Mono', monospace; color: var(--accent-blue); font-size: 14px;">/s3/{bucket}/{key}</code>)</span>
+      <span style="font-size: 12px; color: var(--text-muted);">S3-Compatible Striped Storage &amp; KV Partitioner</span>
+    </div>
+
+    <section class="r2-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-blue);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">S3 Protocol Gateway</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-main); word-break: break-all;">PUT / GET / HEAD / DELETE / LIST</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">AWS S3 SDK &amp; CLI compatible REST endpoint</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-cf);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Multi-Account KV Cache</div>
+          <div style="font-size: 13px; font-weight: 600; color: var(--accent-cf);" id="kv-cache-stats">Hit Rate: 100% (0 keys)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Partitioned manifests &amp; metadata across pool</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-green);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Striped Chunk Engine</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-green);" id="r2-striping-status">Active (2MB Boundary)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Transparent multi-bucket quota striping</div>
+        </div>
+      </div>
+
+      <!-- S3 Gateway Interactive Tester -->
+      <div style="display: flex; flex-direction: column; gap: 12px; background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px;">
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+          <span style="font-size: 12px; font-weight: 600; color: var(--text-muted);">S3 Bucket:</span>
+          <input type="text" id="s3-bucket" placeholder="bucket" value="assets" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; width: 120px;">
+          <span style="color: var(--text-muted); font-family: monospace;">/</span>
+          <input type="text" id="s3-key" placeholder="object key (e.g. docs/specs.txt)" value="docs/specs.txt" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; flex-grow: 1; min-width: 160px;">
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+          <span style="font-size: 12px; font-weight: 600; color: var(--text-muted);">Payload:</span>
+          <input type="text" id="s3-payload" placeholder="Object content bytes..." value="Cloudflare R2 multi-account virtual storage striped across pooled edge tenants." style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; flex-grow: 1;">
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;">
+          <button class="action-btn" onclick="uploadS3Object()" style="padding: 6px 14px; font-size: 12px;">PUT Object (Stripe)</button>
+          <button class="action-btn" onclick="fetchS3Object()" style="padding: 6px 14px; font-size: 12px; background: #0284c7;">GET Object</button>
+          <button class="action-btn" onclick="inspectS3Manifest()" style="padding: 6px 14px; font-size: 12px; background: #475569;">Inspect Manifest</button>
+          <button class="action-btn" onclick="listS3Bucket()" style="padding: 6px 14px; font-size: 12px; background: #334155;">List Bucket (XML)</button>
+        </div>
+      </div>
+      <div id="s3-test-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle);"></div>
+    </section>
+
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
       <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
@@ -231,10 +278,18 @@
   <script>
     async function loadState() {
       try {
-        const [accRes, leaseRes] = await Promise.all([
+        const [accRes, leaseRes, kvStats] = await Promise.all([
           fetch('/api/accounts').then(r => r.json()),
-          fetch('/api/leases').then(r => r.json())
+          fetch('/api/leases').then(r => r.json()),
+          fetch('/api/kv/stats').then(r => r.json()).catch(() => null)
         ]);
+
+        if (kvStats) {
+          const kvEl = document.getElementById('kv-cache-stats');
+          if (kvEl) {
+            kvEl.textContent = `Hit Rate: ${kvStats.hit_rate_percent.toFixed(1)}% (${kvStats.total_keys} keys)`;
+          }
+        }
 
         // Render accounts
         const grid = document.getElementById('accounts-grid');
@@ -349,6 +404,119 @@
         loadState();
       } catch (err) {
         resBox.innerHTML = `<span style="color: #ef4444;">Network / Dispatch Error: ${err.message}</span>`;
+      }
+    }
+
+    async function uploadS3Object() {
+      const bucket = document.getElementById('s3-bucket').value.trim();
+      const key = document.getElementById('s3-key').value.trim();
+      const payload = document.getElementById('s3-payload').value;
+      const resBox = document.getElementById('s3-test-result');
+
+      if (!bucket || !key) {
+        alert('Please specify bucket and object key');
+        return;
+      }
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Uploading object to /s3/${bucket}/${key} (Striping across pooled R2 buckets)...`;
+
+      try {
+        const start = performance.now();
+        const res = await fetch(`/s3/${bucket}/${key}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'text/plain' },
+          body: payload
+        });
+        const elapsed = Math.round(performance.now() - start);
+
+        const etag = res.headers.get('ETag') || 'none';
+        const chunks = res.headers.get('x-amz-meta-striped-chunks') || '1';
+        const accounts = res.headers.get('x-amz-meta-accounts') || 'pool';
+
+        resBox.innerHTML = `
+          <div style="color: ${res.ok ? '#10b981' : '#ef4444'}; font-weight: 600; margin-bottom: 6px;">
+            PUT /s3/${bucket}/${key} ➔ HTTP ${res.status} ${res.statusText} (${elapsed}ms)
+          </div>
+          <div><strong>ETag:</strong> ${etag}</div>
+          <div><strong>Striped Chunks:</strong> ${chunks}</div>
+          <div><strong>Tenant Accounts:</strong> ${accounts}</div>
+        `;
+        loadState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Upload Error: ${err.message}</span>`;
+      }
+    }
+
+    async function fetchS3Object() {
+      const bucket = document.getElementById('s3-bucket').value.trim();
+      const key = document.getElementById('s3-key').value.trim();
+      const resBox = document.getElementById('s3-test-result');
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Fetching object from /s3/${bucket}/${key}...`;
+
+      try {
+        const start = performance.now();
+        const res = await fetch(`/s3/${bucket}/${key}`);
+        const elapsed = Math.round(performance.now() - start);
+
+        const etag = res.headers.get('ETag') || 'none';
+        const chunks = res.headers.get('x-amz-meta-striped-chunks') || '1';
+        const bodyText = await res.text();
+
+        resBox.innerHTML = `
+          <div style="color: ${res.ok ? '#10b981' : '#ef4444'}; font-weight: 600; margin-bottom: 6px;">
+            GET /s3/${bucket}/${key} ➔ HTTP ${res.status} ${res.statusText} (${elapsed}ms)
+          </div>
+          <div><strong>ETag:</strong> ${etag} | <strong>Chunks Reassembled:</strong> ${chunks}</div>
+          <pre style="margin-top: 8px; color: #f8fafc; white-space: pre-wrap; max-height: 150px; overflow-y: auto;">${bodyText}</pre>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Fetch Error: ${err.message}</span>`;
+      }
+    }
+
+    async function inspectS3Manifest() {
+      const bucket = document.getElementById('s3-bucket').value.trim();
+      const key = document.getElementById('s3-key').value.trim();
+      const resBox = document.getElementById('s3-test-result');
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Inspecting manifest for /s3/${bucket}/${key}...`;
+
+      try {
+        const res = await fetch(`/s3/inspect/${bucket}/${key}`);
+        const data = await res.json();
+        resBox.innerHTML = `
+          <div style="color: #38bdf8; font-weight: 600; margin-bottom: 6px;">
+            R2 Striped Manifest: ${bucket}/${key}
+          </div>
+          <pre style="margin-top: 8px; color: #f8fafc; white-space: pre-wrap; max-height: 200px; overflow-y: auto;">${JSON.stringify(data, null, 2)}</pre>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Inspect Error: ${err.message}</span>`;
+      }
+    }
+
+    async function listS3Bucket() {
+      const bucket = document.getElementById('s3-bucket').value.trim();
+      const resBox = document.getElementById('s3-test-result');
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Listing objects in bucket /s3/${bucket}...`;
+
+      try {
+        const res = await fetch(`/s3/${bucket}`);
+        const text = await res.text();
+        resBox.innerHTML = `
+          <div style="color: #10b981; font-weight: 600; margin-bottom: 6px;">
+            ListBucketResult XML (/s3/${bucket})
+          </div>
+          <pre style="margin-top: 8px; color: #f8fafc; white-space: pre-wrap; max-height: 200px; overflow-y: auto;">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">List Error: ${err.message}</span>`;
       }
     }
 

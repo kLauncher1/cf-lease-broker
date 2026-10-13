@@ -19,9 +19,12 @@
 ## ⚡ Highlights
 
 - **Multi-Account Quota Aggregation**: Pools multiple free/pro Cloudflare accounts into a unified virtual compute cluster, overcoming single-account daily request boundaries.
+- **Virtual R2 S3-Compatible Gateway**: S3 REST protocol endpoints (`/s3/{bucket}/{key...}`) that stripe object storage across pooled R2 buckets with automatic 2MB chunking and SHA-256 integrity verification.
+- **Multi-Account Partitioned KV Cache**: Thread-safe partitioned KV storage layer with consistent FNV hashing, LRU memory caching, and TTL eviction.
 - **Automated Rate-Limit Interception & Zero-Downtime Failover**: Intercepts HTTP 429 Too Many Requests and gateway errors in real time, automatically rerouting inflight requests to the next healthy account in the pool.
 - **Transparent Reverse Proxy**: Forward traffic seamlessly via `/proxy/{service}/*` with buffered body retries and RFC 7230 hop-by-hop header stripping.
 - **Dynamic Resource Leasing (Vouchers)**: Issues short-lived, scoped API tokens and endpoints (`lse_...`) for internal microservices, third-party callers, or test suites.
+- **Proactive Quota Webhook Alerts**: Configurable Slack and Discord webhook notifications when pooled tenants reach 80%, 95%, or 100% capacity limits.
 - **Single Executable Deployment**: The Cloudflare-themed glassmorphism management dashboard is baked directly into the Go binary via `//go:embed`.
 - **Lightweight Memory Footprint**: Runs persistently under **12 MB of RAM** with zero external runtime dependencies.
 
@@ -58,19 +61,57 @@ go build -ldflags="-s -w" -o cf-lease-broker .
 ┌────────────────────────────────────────────────────────────────────────┐
 │                            cf-lease-broker                             │
 │                         Single Go Executable                           │
-├──────────────────────────┬──────────────────────────┬──────────────────┤
-│   internal/broker        │      internal/proxy      │ internal/cloud...│
-│   • Multi-Tenant Pool    │   • Transparent Proxy    │ • Edge Verify    │
-│   • Dynamic Vouchers     │   • 429 Interception     │ • Latency Probe  │
-│   • Quota Balancer       │   • Inflight Retry Engine│                  │
-├──────────────────────────┴──────────────────────────┴──────────────────┤
+├───────────────────┬───────────────────┬────────────────────────────────┤
+│  internal/broker  │  internal/proxy   │       internal/storage         │
+│  • Account Pool   │  • Reverse Proxy  │ • Virtual S3 Gateway (/s3/...) │
+│  • Dynamic Leases │  • 429 Failover   │ • 2MB Striped Chunker          │
+│  • Quota Balancer │  • Payload Buffer │ • Partitioned KV Cache Layer   │
+│                   │  • Hop-by-Hop     │ • Quota Webhook Dispatcher     │
+├───────────────────┴───────────────────┴────────────────────────────────┤
 │                         net/http HTTP Engine                           │
-│   • /api/accounts   • /api/leases   • /api/health   • /proxy/{svc}/*   │
+│   • /s3/{bkt}/{key}  • /api/kv/*  • /api/webhooks/*  • /proxy/{svc}/*  │
+│   • /api/accounts    • /api/leases • /api/health                       │
 ├────────────────────────────────────────────────────────────────────────┤
 │                         Embedded Web Dashboard                         │
 │                   (Glassmorphism UI via //go:embed)                    │
 │                  web/dist/index.html -> Port 9081                      │
 └────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🪣 Virtual R2 S3-Compatible Gateway (`/s3/{bucket}/{key...}`)
+
+The broker exposes standard AWS S3-compatible endpoints allowing existing S3 SDKs, microservices, and CLI tools to store objects across pooled Cloudflare R2 accounts without exceeding individual tenant storage quotas:
+
+### Core Capabilities:
+1. **Striped Chunking**: Inbound payloads exceeding 2MB are automatically split into sequence blocks (`chk_<hash>_<index>`) and distributed across healthy accounts in the pool.
+2. **Integrity Checksums**: Each chunk includes an individual SHA-256 checksum, and objects receive standard multi-part compatible composite ETags.
+3. **HTTP Range Requests**: Supports `Range: bytes=start-end` headers for video streaming, resume downloads, and large asset partial reads.
+4. **ListObjectsV2**: Conforms to standard S3 XML `ListBucketResult` responses.
+
+### S3 CLI & Curl Examples:
+
+```bash
+# 1. Store an object across pooled R2 buckets
+curl -i -X PUT http://localhost:9081/s3/assets/docs/whitepaper.pdf \
+  -H "Content-Type: application/pdf" \
+  --data-binary "@whitepaper.pdf"
+
+# Response headers:
+# HTTP/1.1 200 OK
+# ETag: "4f7a9c...-4"
+# x-amz-meta-striped-chunks: 4
+# x-amz-meta-accounts: cf-tenant-alpha,cf-tenant-bravo,cf-tenant-charlie
+
+# 2. Retrieve object
+curl http://localhost:9081/s3/assets/docs/whitepaper.pdf -o downloaded.pdf
+
+# 3. Partial byte range request
+curl -i -H "Range: bytes=0-1048575" http://localhost:9081/s3/assets/docs/whitepaper.pdf
+
+# 4. List bucket objects (S3 XML)
+curl http://localhost:9081/s3/assets
 ```
 
 ---
@@ -109,6 +150,12 @@ If `cf-tenant-charlie` hits a rate limit, the caller receives the exact same res
 
 | Endpoint | Method | Description |
 | :--- | :---: | :--- |
+| `/s3/{bucket}/{key...}` | `PUT/GET/HEAD/DELETE` | S3-compatible virtual storage gateway with chunk striping |
+| `/s3/{bucket}` | `GET` | S3 ListObjectsV2 XML listing for bucket |
+| `/api/kv/{ns}/{key}` | `GET/PUT/DELETE` | Multi-account partitioned KV caching endpoint |
+| `/api/kv/stats` | `GET` | Cache efficiency, hit rate, and tenant partition metrics |
+| `/api/webhooks/alerts` | `GET` | Logged quota threshold notifications |
+| `/api/webhooks/test` | `POST` | Dispatches test quota threshold notification |
 | `/proxy/{service}/*` | `ANY` | Transparent failover reverse proxy to Cloudflare Workers with 429 interception |
 | `/api/accounts` | `GET` | Snapshot of all pooled Cloudflare accounts, limits, and usage |
 | `/api/leases` | `GET` | List all active and revoked resource leases |
