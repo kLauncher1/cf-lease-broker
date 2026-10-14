@@ -23,10 +23,12 @@
 - **HS256 JWT Authentication & RBAC**: Microservice and administrative authentication engine with HMAC-SHA256 tokens, constant-time verification, and thread-safe JTI revocation denylists.
 - **Virtual R2 S3-Compatible Gateway**: S3 REST protocol endpoints (`/s3/{bucket}/{key...}`) that stripe object storage across pooled R2 buckets with automatic 2MB chunking and SHA-256 integrity verification.
 - **Multi-Account Partitioned KV Cache**: Thread-safe partitioned KV storage layer with consistent FNV hashing, LRU memory caching, and TTL eviction.
+- **Prometheus 0.0.4 Metrics Exporter**: Native standard Prometheus `/metrics` scraper endpoint exporting lease counts, tenant quotas, rate limit rejections, and proxy telemetry with zero external dependencies.
+- **Sliding-Window Rate Limiting & Automated Probation**: Sub-bucketed in-memory sliding window rate tracker with burst allowance and exponential backoff probation state machine for rate-limited accounts.
+- **Multi-Channel Quota Webhooks**: Rich Discord embeds, Slack Block Kit alerts, and generic JSON notifications triggered at 80% (Warning), 95% (Critical), and 100% (Exhausted) thresholds with 10-minute debouncing.
 - **Automated Rate-Limit Interception & Zero-Downtime Failover**: Intercepts HTTP 429 Too Many Requests and gateway errors in real time, automatically rerouting inflight requests to the next healthy account in the pool.
 - **Transparent Reverse Proxy**: Forward traffic seamlessly via `/proxy/{service}/*` with buffered body retries and RFC 7230 hop-by-hop header stripping.
 - **Dynamic Resource Leasing (Vouchers)**: Issues short-lived, scoped API tokens and endpoints (`lse_...`) for internal microservices, third-party callers, or test suites.
-- **Proactive Quota Webhook Alerts**: Configurable Slack and Discord webhook notifications when pooled tenants reach 80%, 95%, or 100% capacity limits.
 - **Single Executable Deployment**: The Cloudflare-themed glassmorphism management dashboard is baked directly into the Go binary via `//go:embed`.
 - **Lightweight Memory Footprint**: Runs persistently under **12 MB of RAM** with zero external runtime dependencies.
 
@@ -68,15 +70,15 @@ go build -ldflags="-s -w" -o cf-lease-broker .
 │  • Account Pool   │  • Reverse Proxy  │ • Virtual S3 Gateway (/s3/...) │
 │  • Dynamic Leases │  • 429 Failover   │ • 2MB Striped Chunker          │
 │  • Quota Balancer │  • Payload Buffer │ • Partitioned KV Cache Layer   │
-│                   │  • Hop-by-Hop     │ • Quota Webhook Dispatcher     │
-├───────────────────┴───────────────────┴────────────────────────────────┤
-│                       internal/security                                │
-│  • Windows DPAPI Bindings             • AES-256-GCM Secret Vault       │
-│  • HS256 JWT Token Engine             • RBAC Auth Middleware           │
-│  • JTI Revocation Denylist            • In-Memory Buffer Zeroization   │
-├────────────────────────────────────────────────────────────────────────┤
+├───────────────────┼───────────────────┴────────────────────────────────┤
+│  internal/quota   │               internal/security                    │
+│  • Prometheus     │ • Windows DPAPI Bindings • AES-256-GCM Vault       │
+│  • Sliding-Window │ • HS256 JWT Token Engine • RBAC Auth Middleware    │
+│  • Auto-Probation │ • JTI Denylist           • Buffer Zeroization      │
+│  • Webhook Alerts │                                                    │
+├───────────────────┴────────────────────────────────────────────────────┤
 │                         net/http HTTP Engine                           │
-│   • /s3/{bkt}/{key}  • /api/kv/*      • /api/webhooks/*                │
+│   • /metrics         • /api/quota/*   • /s3/{bkt}/{key}                │
 │   • /proxy/{svc}/*   • /api/accounts  • /api/leases (Auth Guarded)     │
 │   • /api/auth/*      • /api/security  • /api/health                    │
 ├────────────────────────────────────────────────────────────────────────┤
@@ -166,6 +168,14 @@ The broker provides a transparent edge reverse proxy at `/proxy/{service}/*`. Ca
 
 | Endpoint | Method | Auth | Description |
 | :--- | :---: | :---: | :--- |
+| `/metrics` | `GET` | Public | Standard Prometheus 0.0.4 text format metrics scraper |
+| `/api/quota/alerts` | `GET` | Public | Logged quota threshold notifications history |
+| `/api/quota/webhooks/config` | `GET/POST` | Public | Inspect or update Discord/Slack webhook URLs |
+| `/api/quota/webhooks/test` | `POST` | Public | Dispatches test quota threshold notification (80%/95%/100%) |
+| `/api/quota/probation` | `GET` | Public | Current probation records and timers for pooled accounts |
+| `/api/quota/probation/recover` | `POST` | Public | Manually restore an account from probation (`?id=...`) |
+| `/api/quota/probation/trigger` | `POST` | Public | Simulate 429 rate limit probation trigger (`?id=...`) |
+| `/api/quota/ratelimit` | `GET` | Public | Sliding window limiter telemetry (`?key=...`) |
 | `/api/auth/token` | `POST` | Public / Key | Issue scoped HS256 JWT bearer token |
 | `/api/auth/revoke` | `POST` | Bearer | Revoke a JWT token by JTI |
 | `/api/auth/me` | `GET` | Bearer | Verify and inspect active caller claims |
@@ -177,8 +187,6 @@ The broker provides a transparent edge reverse proxy at `/proxy/{service}/*`. Ca
 | `/s3/{bucket}` | `GET` | Public | S3 ListObjectsV2 XML listing for bucket |
 | `/api/kv/{ns}/{key}` | `GET/PUT/DELETE` | Public | Multi-account partitioned KV caching endpoint |
 | `/api/kv/stats` | `GET` | Public | Cache efficiency, hit rate, and tenant partition metrics |
-| `/api/webhooks/alerts` | `GET` | Public | Logged quota threshold notifications |
-| `/api/webhooks/test` | `POST` | Public | Dispatches test quota threshold notification |
 | `/proxy/{service}/*` | `ANY` | Public | Transparent failover reverse proxy with 429 interception |
 | `/api/accounts` | `GET` | Public | Snapshot of all pooled Cloudflare accounts and limits |
 | `/api/leases` | `GET` | **Bearer** | List all active and revoked resource leases |
