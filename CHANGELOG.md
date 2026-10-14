@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-10-14
+
+### Added
+- **Multi-Architecture Standalone Cross-Compilation Pipeline**: Built `scripts/build_artifacts.mjs` providing automated standalone packaging across four target architectures (`linux/amd64`, `linux/arm64`, `darwin/arm64`, `windows/amd64`) with binary size optimization, stripped symbols (`-s -w`), and SHA-256 / SHA-512 cryptographic checksum manifest generation (`dist/checksums.sha256`, `dist/artifacts_manifest.json`).
+- **Automated GitHub Actions CI & Release Workflows**: Created `.github/workflows/release.yml` with automated tag-based releases, cryptographic binary checksum verification, and asset uploads; expanded `.github/workflows/ci.yml` with a multi-architecture cross-compilation matrix covering all target platforms.
+- **Zero-Downtime Hot Reloading of Tenant Credentials**: Implemented `internal/config/config.go` and `internal/config/hot_reload.go` supporting background file watching with deterministic content hashing, cross-platform signal dispatching (SIGHUP on POSIX), and thread-safe dynamic synchronization with `broker.PoolManager` and `security.SecretVault` without service interruption.
+- **Configuration & Hot Reload REST Endpoints**: Registered `/api/config/status` and `/api/config/reload` under administrative Bearer/JWT authentication in `main.go`, with automatic credential token redaction (`HasToken: true`) in diagnostic responses.
+- **Config & Hot Reload Unit Test Suite**: Added 9 comprehensive unit tests in `internal/config/config_test.go` covering schema validation, clone isolation, manual reloads, file watcher polling, bad config recovery, pool/vault credential sync, HTTP endpoints, and high-concurrency thread safety.
+
+### Changed
+- Added `UpsertAccount`, `SyncAccounts`, and `RemoveAccount` methods to `internal/broker/pool.go` enabling non-disruptive runtime quota updates.
+- Integrated `config.HotReloader` into `main.go` bootstrap sequence, reading `CF_BROKER_CONFIG_PATH` and binding hot-reload events to the pool manager and vault.
+- Version bumped to `0.6.0` across project manifests (`package.json`, `web/package.json`) and security policy (`SECURITY.md`).
+
+---
+
 ## [0.5.0] - 2026-10-14
 
 ### Added

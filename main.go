@@ -12,10 +12,18 @@ import (
 
 	"github.com/kLauncher1/cf-lease-broker/internal/broker"
 	"github.com/kLauncher1/cf-lease-broker/internal/cloudflare"
+	"github.com/kLauncher1/cf-lease-broker/internal/config"
 	"github.com/kLauncher1/cf-lease-broker/internal/proxy"
 	"github.com/kLauncher1/cf-lease-broker/internal/quota"
 	"github.com/kLauncher1/cf-lease-broker/internal/security"
 	"github.com/kLauncher1/cf-lease-broker/internal/storage"
+)
+
+var (
+	// Version is populated at build time via -ldflags="-X main.Version=..."
+	Version = "0.6.0"
+	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
+	BuildTime = "development"
 )
 
 //go:embed web/dist/*
@@ -28,7 +36,18 @@ type grantRequest struct {
 }
 
 func main() {
+	// Initialize configuration & zero-downtime hot reloader (Milestone 6)
+	configPath := os.Getenv("CF_BROKER_CONFIG_PATH")
+	if configPath == "" {
+		configPath = config.DefaultConfigPath
+	}
+	hotReloader := config.NewHotReloader(configPath, nil, 2*time.Second)
+	activeConfig := hotReloader.GetConfig()
+
 	port := os.Getenv("PORT")
+	if port == "" && activeConfig.ServerPort != "" {
+		port = activeConfig.ServerPort
+	}
 	if port == "" {
 		port = "9081"
 	}
@@ -65,10 +84,32 @@ func main() {
 	jwtMgr := security.NewJWTManager(jwtSecret)
 	authMgr := security.NewAuthManager(jwtMgr, vault)
 
-	// Seed encrypted credentials for pooled accounts into vault
-	for _, acc := range poolMgr.ListAccounts() {
-		mockKey := fmt.Sprintf("cftok_%s_edge_production_token", acc.ID)
-		_ = vault.StoreCredential(acc.ID, []byte(mockKey))
+	// Seed encrypted credentials for pooled accounts into vault and poolMgr
+	for _, acc := range activeConfig.Accounts {
+		poolMgr.UpsertAccount(acc.ToAccountStatus())
+		token := acc.APIToken
+		if token == "" {
+			token = fmt.Sprintf("cftok_%s_edge_production_token", acc.ID)
+		}
+		_ = vault.StoreCredential(acc.ID, []byte(token))
+	}
+
+	// Register hot-reload callback to synchronize pool and credentials with zero downtime
+	hotReloader.OnReload(func(oldCfg, newCfg *config.Config) {
+		log.Printf("[Config] Hot reloading configuration with %d accounts...", len(newCfg.Accounts))
+		var statuses []broker.AccountStatus
+		for _, acc := range newCfg.Accounts {
+			statuses = append(statuses, acc.ToAccountStatus())
+			if acc.APIToken != "" {
+				_ = vault.StoreCredential(acc.ID, []byte(acc.APIToken))
+			}
+		}
+		poolMgr.SyncAccounts(statuses)
+		log.Println("[Config] Hot reload applied successfully with zero downtime.")
+	})
+
+	if err := hotReloader.Start(); err != nil {
+		log.Printf("[Config] Warning: hot reloader background start: %v", err)
 	}
 
 	mux := http.NewServeMux()
@@ -104,6 +145,10 @@ func main() {
 
 	// Production Secrets Vault API (/api/security/*, Protected by Bearer/Admin Auth)
 	mux.Handle("/api/security/", authMgr.RequireAuth(vault))
+
+	// Configuration & Hot-Reload Diagnostics API (/api/config/*, Protected by Bearer/Admin Auth)
+	mux.Handle("/api/config/", authMgr.RequireAuth(hotReloader))
+	mux.Handle("/api/config", authMgr.RequireAuth(hotReloader))
 
 	// Authentication & JWT Management Endpoints
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
@@ -188,9 +233,10 @@ func main() {
 	}
 
 	fmt.Println("=================================================================")
-	fmt.Println(" ⚡ CF-Lease-Broker · Multi-Account Cloudflare Resource Broker")
+	fmt.Printf(" ⚡ CF-Lease-Broker v%s · Multi-Account Cloudflare Resource Broker\n", Version)
 	fmt.Printf(" 📡 Web Dashboard Live at http://localhost:%s\n", port)
 	fmt.Println(" 🔒 Production Secrets Vault & HS256 JWT Authentication Enabled")
+	fmt.Println(" 🔄 Zero-Downtime Hot Reloading Active (Watcher & SIGHUP)")
 	fmt.Println(" 💡 Standalone Single Binary with Embedded Zero-Dependency UI")
 	fmt.Println("=================================================================")
 

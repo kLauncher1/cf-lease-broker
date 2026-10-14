@@ -228,3 +228,59 @@ func (pm *PoolManager) GetAccount(accountID string) (*AccountStatus, error) {
 	cpy := *acc
 	return &cpy, nil
 }
+
+// UpsertAccount inserts or updates an account profile in the pool in a thread-safe manner.
+func (pm *PoolManager) UpsertAccount(acc AccountStatus) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	existing, exists := pm.accounts[acc.ID]
+	if exists {
+		existing.Alias = acc.Alias
+		existing.Plan = acc.Plan
+		existing.WorkerLimit = acc.WorkerLimit
+		if acc.R2StorageMB > 0 {
+			existing.R2StorageMB = acc.R2StorageMB
+		}
+		return
+	}
+	cpy := acc
+	if !cpy.IsHealthy && cpy.ProbationUntil.IsZero() {
+		cpy.IsHealthy = true
+	}
+	pm.accounts[acc.ID] = &cpy
+}
+
+// SyncAccounts synchronizes the pool accounts with the provided list without disrupting active state.
+func (pm *PoolManager) SyncAccounts(newAccounts []AccountStatus) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	for _, acc := range newAccounts {
+		existing, exists := pm.accounts[acc.ID]
+		if exists {
+			existing.Alias = acc.Alias
+			existing.Plan = acc.Plan
+			existing.WorkerLimit = acc.WorkerLimit
+		} else {
+			cpy := acc
+			if !cpy.IsHealthy && cpy.ProbationUntil.IsZero() {
+				cpy.IsHealthy = true
+			}
+			pm.accounts[acc.ID] = &cpy
+		}
+	}
+}
+
+// RemoveAccount deletes an account from the pool.
+func (pm *PoolManager) RemoveAccount(accountID string) error {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if _, exists := pm.accounts[accountID]; !exists {
+		return errors.New("account not found")
+	}
+	delete(pm.accounts, accountID)
+	return nil
+}
+

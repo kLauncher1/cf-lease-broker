@@ -50,10 +50,10 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 
 ---
 
-## Milestone 6: v0.6.0 (Cross-Platform Standalone Artifacts & CI/CD Pipeline)
-- [ ] Multi-architecture standalone binary packaging (`linux/amd64`, `linux/arm64`, `darwin/arm64`, `windows/amd64`).
-- [ ] GitHub Actions release workflow with automated binary signing and SHA-256 checksum generation.
-- [ ] Zero-downtime hot reloading of account credentials configuration via file watcher and signals.
+## Release: v0.6.0 (Cross-Platform Standalone Artifacts & CI/CD Pipeline)
+- [x] Multi-architecture standalone binary packaging (`linux/amd64`, `linux/arm64`, `darwin/arm64`, `windows/amd64`).
+- [x] GitHub Actions release workflow with automated binary signing and SHA-256 checksum generation.
+- [x] Zero-downtime hot reloading of account credentials configuration via file watcher and signals.
 
 ---
 
