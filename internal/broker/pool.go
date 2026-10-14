@@ -17,6 +17,7 @@ type AccountStatus struct {
 	KVReadCount    int64     `json:"kv_read_count"`
 	IsHealthy      bool      `json:"is_healthy"`
 	LastFailoverAt time.Time `json:"last_failover_at,omitempty"`
+	ProbationUntil time.Time `json:"probation_until,omitempty"`
 }
 
 // PoolManager coordinates multiple Cloudflare tenant accounts and dynamic failover.
@@ -80,13 +81,20 @@ func (pm *PoolManager) ListAccounts() []AccountStatus {
 
 // SelectOptimalAccount picks the healthy account with the highest available quota.
 func (pm *PoolManager) SelectOptimalAccount() (*AccountStatus, error) {
-	pm.mu.RLock()
-	defer pm.mu.RUnlock()
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
 
+	now := time.Now().UTC()
 	var candidate *AccountStatus
 	var maxAvailable int64 = -1
 
 	for _, acc := range pm.accounts {
+		// Auto-recover account if probation period has elapsed
+		if !acc.IsHealthy && !acc.ProbationUntil.IsZero() && now.After(acc.ProbationUntil) {
+			acc.IsHealthy = true
+			acc.ProbationUntil = time.Time{}
+		}
+
 		if !acc.IsHealthy {
 			continue
 		}
@@ -101,6 +109,37 @@ func (pm *PoolManager) SelectOptimalAccount() (*AccountStatus, error) {
 		return nil, errors.New("no healthy Cloudflare accounts with available quota")
 	}
 	return candidate, nil
+}
+
+// SetAccountProbation places an account into probation until a future timestamp.
+func (pm *PoolManager) SetAccountProbation(accountID string, duration time.Duration) error {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	acc, exists := pm.accounts[accountID]
+	if !exists {
+		return errors.New("account not found")
+	}
+
+	acc.IsHealthy = false
+	acc.ProbationUntil = time.Now().UTC().Add(duration)
+	acc.LastFailoverAt = time.Now().UTC()
+	return nil
+}
+
+// RecoverAccount restores an account to healthy operational status immediately.
+func (pm *PoolManager) RecoverAccount(accountID string) error {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	acc, exists := pm.accounts[accountID]
+	if !exists {
+		return errors.New("account not found")
+	}
+
+	acc.IsHealthy = true
+	acc.ProbationUntil = time.Time{}
+	return nil
 }
 
 // TriggerFailover marks an account as unhealthy and records a failover timestamp.

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-14
+
+### Added
+- **Distributed Quota Synchronization & Real-time Webhooks**: Built `internal/quota/notifier.go` providing multi-channel notifications for Discord, Slack, and generic webhook endpoints when tenant resources reach 80% (Warning), 95% (Critical), and 100% (Exhausted) thresholds with 10-minute debouncing cooldowns.
+- **Sliding-Window Rate Limiter**: Implemented `internal/quota/sliding_window.go` providing sub-bucketed in-memory timestamp rate limiting with configurable window durations, request limits, burst allowances, and automatic idle key memory reclamation.
+- **Automated Account Recovery Probation**: Added `internal/quota/probation.go` managing tenant failure states with exponential backoff probation intervals (30s base up to 5m ceiling) and automated health recovery upon cooldown expiration.
+- **Prometheus 0.0.4 Metrics Exporter**: Implemented `internal/quota/metrics.go` exporting standard Prometheus exposition format at `/metrics` with zero external dependencies, exposing account health states, active/cumulative leases, request telemetry, quota utilization ratios, rate limit rejections, and failover counts.
+- **Embedded Quota & Telemetry Console**: Enhanced `web/dist/index.html` with real-time Prometheus scraper view, interactive 429 probation trigger/recovery controls, sliding-window limiter statistics, and multi-channel webhook configuration and testing panels.
+- **Quota & Metrics Unit Test Suite**: Added 11 exhaustive unit tests in `internal/quota/quota_test.go` covering sliding-window concurrency, probation backoff and auto-recovery, Discord/Slack payload formatting, and Prometheus metrics generation.
+
+### Changed
+- Integrated Prometheus `/metrics` scraper and `/api/quota/*` management endpoints into `main.go`.
+- Added automated background ticker in `main.go` for periodic probation sweep and tenant threshold evaluation.
+- Added `ProbationUntil`, `SetAccountProbation`, and `RecoverAccount` methods to `internal/broker/pool.go`.
+
+---
+
 ## [0.4.0] - 2026-10-14
 
 ### Added

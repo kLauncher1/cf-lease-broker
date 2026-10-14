@@ -13,6 +13,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/broker"
 	"github.com/kLauncher1/cf-lease-broker/internal/cloudflare"
 	"github.com/kLauncher1/cf-lease-broker/internal/proxy"
+	"github.com/kLauncher1/cf-lease-broker/internal/quota"
 	"github.com/kLauncher1/cf-lease-broker/internal/security"
 	"github.com/kLauncher1/cf-lease-broker/internal/storage"
 )
@@ -40,6 +41,24 @@ func main() {
 	kvCache := storage.NewKVCacheLayer(poolMgr)
 	r2Gateway := storage.NewR2Gateway(poolMgr, kvCache, webhookDispatcher, storage.DefaultChunkSize)
 
+	// Distributed Quota, Rate Limiting & Prometheus Metrics (Milestone 5)
+	slidingLimiter := quota.NewSlidingWindowLimiter(time.Minute, 120, 30)
+	probationMgr := quota.NewProbationManager(poolMgr)
+	quotaNotifier := quota.NewQuotaNotifier(os.Getenv("DISCORD_WEBHOOK_URL"), os.Getenv("SLACK_WEBHOOK_URL"), os.Getenv("WEBHOOK_URL"))
+	metricsCollector := quota.NewMetricsCollector(poolMgr, leaseEng, probationMgr, slidingLimiter)
+
+	// Background ticker for automated probation recovery and quota evaluation
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			probationMgr.SweepExpired()
+			for _, acc := range poolMgr.ListAccounts() {
+				quotaNotifier.CheckAccount(acc)
+			}
+		}
+	}()
+
 	// Production Secrets Vault & Auth Manager (Milestone 4)
 	vault := security.NewSecretVault()
 	jwtSecret := []byte(os.Getenv("CF_BROKER_JWT_SECRET"))
@@ -53,6 +72,23 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+
+	// Prometheus 0.0.4 Metrics Exporter (/metrics)
+	mux.Handle("/metrics", metricsCollector)
+
+	// Distributed Quota, Webhooks & Probation APIs (/api/quota/*)
+	mux.Handle("/api/quota/webhooks/", quotaNotifier)
+	mux.Handle("/api/quota/alerts", quotaNotifier)
+	mux.Handle("/api/quota/probation", probationMgr)
+	mux.Handle("/api/quota/probation/", probationMgr)
+	mux.HandleFunc("/api/quota/ratelimit", func(w http.ResponseWriter, r *http.Request) {
+		key := r.URL.Query().Get("key")
+		if key == "" {
+			key = "global"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(slidingLimiter.GetStats(key))
+	})
 
 	// Virtual R2 S3-Compatible Gateway (/s3/{bucket}/{key...})
 	mux.Handle("/s3/", r2Gateway)
@@ -105,6 +141,7 @@ func main() {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			metricsCollector.IncCumulativeLeases()
 			_ = json.NewEncoder(w).Encode(voucher)
 			return
 		}
