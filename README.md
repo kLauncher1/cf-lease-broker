@@ -18,6 +18,9 @@
 
 ## ⚡ Highlights
 
+- **Edge Worker Virtual Compiler & Packaging**: Fast in-memory lexical minifier and validator for JavaScript/Wasm Edge Worker bundles with comment stripping, syntax verification, and SHA-256 content hashing (`internal/compiler/bundle.go`).
+- **Multi-Zone Dynamic Route Injection**: High-performance wildcard route compiler matching arbitrary domains (`*.domain.com/path/*`) with priority weighting and dynamic route injection tables (`internal/compiler/router.go`).
+- **Zero-Copy Direct Streaming Pipeline**: Low-latency edge response streaming utilizing pre-allocated 64KB buffer pools (`sync.Pool`), immediate chunk flushing (`http.Flusher`), and client disconnection detection (`internal/compiler/stream.go`).
 - **Multi-Architecture Standalone Artifacts**: Cross-compilation pipeline packaging stripped standalone executables for `linux/amd64`, `linux/arm64`, `darwin/arm64`, and `windows/amd64` with automated SHA-256 integrity checksum generation (`scripts/build_artifacts.mjs`).
 - **Zero-Downtime Hot Reloading**: Dynamic configuration and credentials reloading via file modification watching and OS signals (`SIGHUP` on POSIX) that synchronizes pooled tenants and the secrets vault without process restarts.
 - **Multi-Account Quota Aggregation**: Pools multiple free/pro Cloudflare accounts into a unified virtual compute cluster, overcoming single-account daily request boundaries.
@@ -76,17 +79,20 @@ node scripts/build_artifacts.mjs --verify
 │  • Dynamic Leases │  • 429 Failover   │ • 2MB Striped Chunker          │
 │  • Quota Balancer │  • Payload Buffer │ • Partitioned KV Cache Layer   │
 ├───────────────────┼───────────────────┼────────────────────────────────┤
-│  internal/quota   │ internal/security │        internal/config         │
-│  • Prometheus     │ • Windows DPAPI   │ • Zero-Downtime Hot Reload     │
-│  • Sliding-Window │ • AES-256-GCM     │ • File Watcher & SIGHUP Sync   │
-│  • Auto-Probation │ • HS256 JWT / RBAC│ • Dynamic Credential Injection │
-│  • Webhook Alerts │ • Zeroize Memory  │ • Token Redaction Engine       │
+│  internal/quota   │ internal/security │       internal/compiler        │
+│  • Prometheus     │ • Windows DPAPI   │ • Virtual JS Minifier / Wasm   │
+│  • Sliding-Window │ • AES-256-GCM     │ • Multi-Zone Route Compiler    │
+│  • Auto-Probation │ • HS256 JWT / RBAC│ • 64KB Zero-Copy Stream Pipe   │
+│  • Webhook Alerts │ • Zeroize Memory  │ • Tenant Bundle Repository     │
 ├───────────────────┴───────────────────┴────────────────────────────────┤
+│                         internal/config                                │
+│  • Zero-Downtime Hot Reloading • File Watcher & POSIX SIGHUP Listener  │
+├────────────────────────────────────────────────────────────────────────┤
 │                         net/http HTTP Engine                           │
-│   • /metrics         • /api/quota/*   • /s3/{bkt}/{key}                │
-│   • /proxy/{svc}/*   • /api/accounts  • /api/leases (Auth Guarded)     │
-│   • /api/auth/*      • /api/security  • /api/config/* (Auth Guarded)   │
-│   • /api/health                                                        │
+│   • /metrics         • /api/compiler/* • /s3/{bkt}/{key}               │
+│   • /proxy/{svc}/*   • /api/quota/*    • /api/leases (Auth Guarded)    │
+│   • /api/auth/*      • /api/security   • /api/config/* (Auth Guarded)  │
+│   • /api/accounts    • /api/health                                     │
 ├────────────────────────────────────────────────────────────────────────┤
 │                         Embedded Web Dashboard                         │
 │                   (Glassmorphism UI via //go:embed)                    │
@@ -206,11 +212,40 @@ The broker provides a transparent edge reverse proxy at `/proxy/{service}/*`. Ca
 
 ---
 
+## 🚀 Edge Worker Virtual Compiler & Dynamic Route Injection
+
+The broker features an integrated compilation and routing engine for multi-tenant Edge Worker scripts and WebAssembly modules:
+
+### 1. In-Memory Lexical Minification & Packaging (`internal/compiler/bundle.go`)
+- **Lexical Tokenizer**: Strips single-line (`//`) and multi-line (`/* */`) comments, eliminates redundant whitespace, normalizes punctuation spacing, and validates Cloudflare Worker module export signatures (`export default { fetch(...) }`, `addEventListener('fetch')`).
+- **WebAssembly Validation**: Verifies 4-byte magic headers (`\x00asm`) and version compliance before tenant packaging.
+- **Content Hashing**: Generates deterministic SHA-256 digests for tenant bundle versioning and audit trails.
+
+### 2. Multi-Zone Wildcard Route Compiler (`internal/compiler/router.go`)
+- **Arbitrary Domain Mapping**: Maps endpoints across wildcard subdomains (`*.domain.com/*`), exact hosts (`api.domain.com/v1/*`), or global fallback rules (`*/*`).
+- **Priority-Weighted Trie**: Evaluates incoming request host and path with specificity scoring (exact host > wildcard subdomain > global; longer path prefix > short prefix), routing traffic dynamically without configuration reloads.
+
+### 3. Zero-Copy Direct Streaming Pipeline (`internal/compiler/stream.go`)
+- **Buffer Pool**: Utilizes pre-allocated 64KB byte slices (`sync.Pool`) to eliminate heap allocations during high-throughput proxy transfers.
+- **Immediate Socket Flushing**: Leverages `http.Flusher` to stream response chunks to clients in real time while disabling intermediary caching via `X-Accel-Buffering: no`.
+- **Cancellation Detection**: Hooks into `context.Context` to terminate upstream worker streams immediately upon client disconnects, preventing socket leakages.
+
+---
+
 ## 📡 REST API Reference
 
 | Endpoint | Method | Auth | Description |
 | :--- | :---: | :---: | :--- |
 | `/metrics` | `GET` | Public | Standard Prometheus 0.0.4 text format metrics scraper |
+| `/api/compiler/compile` | `POST` | Public | Compiles & minifies JavaScript worker source, returning compression ratio and syntax status |
+| `/api/compiler/workers` | `GET` | Public | List all deployed worker bundles and SHA-256 content hashes |
+| `/api/compiler/workers` | `POST` | Public | Package and deploy a new Edge Worker bundle for a tenant |
+| `/api/compiler/workers` | `DELETE` | Public | Undeploy a worker bundle (`?id=bundle-...`) |
+| `/api/compiler/routes` | `GET` | Public | List registered dynamic routes sorted by priority descending |
+| `/api/compiler/routes` | `POST` | Public | Register new dynamic route pattern (`pattern`, `zone_id`, `tenant_id`, `worker_id`) |
+| `/api/compiler/routes` | `DELETE` | Public | Remove dynamic route binding (`?id=route-...`) |
+| `/api/compiler/routes/match` | `POST` | Public | Test URL route pattern matching (`host`, `path`) |
+| `/api/compiler/stream-test` | `GET` | Public | Zero-copy streaming benchmark endpoint (`?size_mb=1..50`) |
 | `/api/config/status` | `GET` | **Bearer** | Hot-reload telemetry stats and sanitized accounts list (redacted tokens) |
 | `/api/config/reload` | `POST` | **Bearer** | Triggers immediate zero-downtime hot reload of configuration from disk |
 | `/api/quota/alerts` | `GET` | Public | Logged quota threshold notifications history |

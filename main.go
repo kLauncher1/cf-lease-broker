@@ -12,6 +12,7 @@ import (
 
 	"github.com/kLauncher1/cf-lease-broker/internal/broker"
 	"github.com/kLauncher1/cf-lease-broker/internal/cloudflare"
+	"github.com/kLauncher1/cf-lease-broker/internal/compiler"
 	"github.com/kLauncher1/cf-lease-broker/internal/config"
 	"github.com/kLauncher1/cf-lease-broker/internal/proxy"
 	"github.com/kLauncher1/cf-lease-broker/internal/quota"
@@ -21,7 +22,7 @@ import (
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.6.0"
+	Version = "0.7.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -59,6 +60,39 @@ func main() {
 	webhookDispatcher := storage.NewWebhookDispatcher(os.Getenv("WEBHOOK_URL"))
 	kvCache := storage.NewKVCacheLayer(poolMgr)
 	r2Gateway := storage.NewR2Gateway(poolMgr, kvCache, webhookDispatcher, storage.DefaultChunkSize)
+
+	// Edge Worker Bundle Virtual Compiler & Dynamic Route Injection (Milestone 7)
+	bundleMgr := compiler.NewBundleManager()
+	routeCompiler := compiler.NewRouteCompiler()
+	streamPipe := compiler.NewStreamPipe(compiler.DefaultBufferSize)
+	compilerHandler := compiler.NewCompilerHandler(bundleMgr, routeCompiler, streamPipe)
+
+	// Seed default edge worker and dynamic route mappings
+	seedScript := `// Edge Worker Microservice Gateway
+export default {
+	async fetch(request, env, ctx) {
+		const url = new URL(request.url);
+		return new Response(JSON.stringify({
+			status: "edge_worker_dispatched",
+			tenant: "cf-tenant-alpha",
+			path: url.pathname,
+			timestamp: new Date().toISOString()
+		}), {
+			headers: { "Content-Type": "application/json", "X-Edge-Origin": "cf-lease-broker" }
+		});
+	}
+};`
+	seedBundle, _ := bundleMgr.PackageWorker(compiler.BundleConfig{
+		TenantID:          "cf-tenant-alpha",
+		Name:              "gateway-worker",
+		Minify:            true,
+		CompatibilityDate: "2024-04-01",
+		MemoryLimitMB:     128,
+	}, []byte(seedScript), nil)
+	if seedBundle != nil {
+		_, _ = routeCompiler.RegisterRoute("*.edge.broker/api/*", "zone-default", "cf-tenant-alpha", seedBundle.ID)
+		_, _ = routeCompiler.RegisterRoute("app.internal/*", "zone-default", "cf-tenant-alpha", seedBundle.ID)
+	}
 
 	// Distributed Quota, Rate Limiting & Prometheus Metrics (Milestone 5)
 	slidingLimiter := quota.NewSlidingWindowLimiter(time.Minute, 120, 30)
@@ -150,6 +184,10 @@ func main() {
 	mux.Handle("/api/config/", authMgr.RequireAuth(hotReloader))
 	mux.Handle("/api/config", authMgr.RequireAuth(hotReloader))
 
+	// Edge Worker Virtual Compiler, Dynamic Route Injection & Zero-Copy Streaming (/api/compiler/*)
+	mux.Handle("/api/compiler/", compilerHandler)
+	mux.Handle("/api/compiler", compilerHandler)
+
 	// Authentication & JWT Management Endpoints
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
 	mux.HandleFunc("/api/auth/revoke", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleRevokeToken)).ServeHTTP)
@@ -237,6 +275,7 @@ func main() {
 	fmt.Printf(" 📡 Web Dashboard Live at http://localhost:%s\n", port)
 	fmt.Println(" 🔒 Production Secrets Vault & HS256 JWT Authentication Enabled")
 	fmt.Println(" 🔄 Zero-Downtime Hot Reloading Active (Watcher & SIGHUP)")
+	fmt.Println(" 🚀 Edge Worker Virtual Compiler & Dynamic Route Injection Active")
 	fmt.Println(" 💡 Standalone Single Binary with Embedded Zero-Dependency UI")
 	fmt.Println("=================================================================")
 

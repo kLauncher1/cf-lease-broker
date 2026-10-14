@@ -1,4 +1,0 @@
-f2c2b30be6321836feb117832d1e086dcbfad9ab96280d8084240c9077362154  cf-lease-broker-linux-amd64
-ddaeb4e903964a1cfd15546948fee55fa103611679ffa03293c681de3664b322  cf-lease-broker-linux-arm64
-db9d935e8c1988881bdd4d211fc5bc964459dc8bd876e53daa2784bb5d249a10  cf-lease-broker-darwin-arm64
-b6583537ceec8e43b5f4c6530b6f40e795db32899bae8fd7d57b14d09370fd19  cf-lease-broker-windows-amd64.exe
