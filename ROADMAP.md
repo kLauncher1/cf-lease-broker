@@ -32,10 +32,12 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 
 ---
 
-## Milestone 4: v0.4.0 (Production Secrets Management & Authentication)
-- [ ] DPAPI and environment variable encryption for Cloudflare API keys at rest.
-- [ ] JWT / Bearer token authentication for administrative `/api/leases` endpoints.
-- [ ] Mutual TLS (mTLS) client certificate verification for zero-trust microservice communication.
+## Release: v0.4.0 (Production Secrets Management & Authentication)
+- [x] Hardware/OS-backed Windows DPAPI and cross-platform AES-256-GCM envelope encryption at rest.
+- [x] HS256 JWT / Bearer token authentication engine with constant-time signature verification.
+- [x] Role-Based Access Control (RBAC) middleware guarding administrative `/api/leases` and `/api/security` endpoints.
+- [x] Ephemeral key derivation and in-memory credential scrubbing (`Zeroize`) preventing memory dumps.
+- [x] Interactive Secrets Vault and JWT session inspector embedded into web console.
 
 ---
 
@@ -50,3 +52,24 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 - [ ] Multi-architecture standalone binary packaging (`linux/amd64`, `linux/arm64`, `darwin/arm64`, `windows/amd64`).
 - [ ] Multi-node Raft consensus state machine for regional cluster synchronization.
 - [ ] Formal cryptographic audit and automated fuzz testing pipeline.
+
+---
+
+## Milestone 7: v1.1.0 (Zero-Trust Mutual TLS & Upstream Verification)
+- [ ] Mutual TLS (mTLS) client certificate verification for upstream edge reverse proxy routes.
+- [ ] Ephemeral CA token generation for inter-broker cluster peering.
+- [ ] Hardware-backed TPM 2.0 key attestation and Windows certificate store integration.
+
+---
+
+## Milestone 8: v1.2.0 (Autonomous Cost Optimization & Billing Ledger)
+- [ ] Granular per-lease compute and bandwidth metering with micro-cent cost attribution.
+- [ ] Automated workload migration away from paid tier overages to standby free tier accounts.
+- [ ] Exportable billing journals in CSV, JSONL, and OpenCost specification formats.
+
+---
+
+## Milestone 9: v1.3.0 (Intelligent Edge Health Radar & Anycast Routing)
+- [ ] Synthetic probe pinging all 330+ Cloudflare edge PoPs for real-time latency map construction.
+- [ ] Sub-millisecond geographic tenant selection prioritizing nearest healthy Cloudflare colo.
+- [ ] BGP route change detection and dynamic lease migration before network packet loss occurs.

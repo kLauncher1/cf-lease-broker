@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-10-14
+
+### Added
+- **Windows DPAPI Cryptographic Engine**: Built `internal/security/dpapi_windows.go` invoking OS-native `CryptProtectData` and `CryptUnprotectData` via `syscall` to encrypt Cloudflare API keys and account credentials at rest.
+- **Cross-Platform AES-256-GCM Secret Vault**: Implemented `internal/security/vault.go` providing authenticated envelope encryption (`dpapi:...` and `aes-gcm:...`), master key derivation from environment variables (`CF_BROKER_MASTER_KEY`), and in-memory credential scrubbing (`Zeroize`).
+- **HS256 JWT Authentication Engine**: Added `internal/security/jwt.go` generating and verifying RFC 7519 JSON Web Tokens with HMAC-SHA256 signatures, constant-time signature comparison, and thread-safe JTI denylist revocation.
+- **Role-Based Access Control Middleware**: Implemented `internal/security/middleware.go` (`RequireAuth` and `RequireRole`) protecting administrative `/api/leases`, `/api/leases/revoke`, `/api/security/*`, and `/api/auth/*` routes with support for both dynamic Bearer JWTs and static bootstrap admin keys.
+- **Interactive Security & Token Console**: Enhanced embedded web dashboard (`web/dist/index.html`) with real-time JWT token issuance, session authentication injection, live DPAPI/AES-GCM secret encryptor, and security posture telemetry.
+- **Security Unit Test Suite**: Added 13 comprehensive unit tests in `internal/security/security_test.go` covering DPAPI round-trip, AES-GCM encryption, ciphertext tampering detection, buffer zeroization, JWT expiry, signature tampering, revocation denylist, and RBAC middleware enforcement.
+
+### Changed
+- Protected administrative endpoints (`/api/leases`, `/api/leases/revoke`, and `/api/security/*`) with `RequireAuth` middleware in `main.go`.
+- Pre-seeded multi-account credentials into the encrypted vault during application bootstrap.
+
+---
+
 ## [0.3.0] - 2026-10-14
 
 ### Added
