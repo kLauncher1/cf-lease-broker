@@ -1,6 +1,6 @@
 {
   "name": "cf-lease-broker",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Multi-account Cloudflare resource pooling & dynamic token lease broker for Workers, KV, and R2",
   "private": true,
   "author": "kLauncher1",

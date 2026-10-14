@@ -57,10 +57,10 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 
 ---
 
-## Milestone 7: v0.7.0 (Edge Worker Bundle Virtual Compiler & Dynamic Route Injection)
-- [ ] On-the-fly JavaScript/Wasm bundle minification and tenant packaging pipeline.
-- [ ] Multi-zone route pattern compiler mapping arbitrary domain endpoints to tenant clusters.
-- [ ] Zero-copy direct streaming pipeline for oversized HTTP responses.
+## Release: v0.7.0 (Edge Worker Bundle Virtual Compiler & Dynamic Route Injection)
+- [x] On-the-fly JavaScript/Wasm bundle minification and tenant packaging pipeline.
+- [x] Multi-zone route pattern compiler mapping arbitrary domain endpoints to tenant clusters.
+- [x] Zero-copy direct streaming pipeline for oversized HTTP responses.
 
 ---
 
@@ -89,3 +89,17 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 - [ ] Synthetic probe pinging all 330+ Cloudflare edge PoPs for real-time latency map construction.
 - [ ] Sub-millisecond geographic tenant selection prioritizing nearest healthy Cloudflare colo.
 - [ ] BGP route change detection and dynamic lease migration before network packet loss occurs.
+
+---
+
+## Milestone 12: v1.4.0 (Adaptive Zero-Copy Compression & Transcoding)
+- [ ] Dynamic payload inspection selecting optimal compression algorithm (Brotli, Zstandard, gzip) based on client Accept-Encoding.
+- [ ] Real-time byte streaming through pre-allocated compressor buffers with zero intermediate heap allocations.
+- [ ] Dynamic dictionary training for tenant API JSON payloads reducing bandwidth by up to 85%.
+
+---
+
+## Milestone 13: v1.5.0 (Edge Key-Value Geo-Replication Mesh)
+- [ ] Multi-master asynchronous KV replication across active broker nodes with vector clock conflict resolution.
+- [ ] CRDT primitives for distributed counter and set synchronization across edge clusters.
+- [ ] Read-your-writes and monotonic-read consistency guarantees for regional tenant workers.

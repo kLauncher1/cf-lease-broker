@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-10-14
+
+### Added
+- **Edge Worker Virtual Compiler & Bundle Packager**: Implemented `internal/compiler/bundle.go` featuring a zero-dependency lexical minifier for JavaScript Edge Worker scripts that strips comments, normalizes whitespace and punctuation, detects standard module exports (`export default { fetch(...) }`, `addEventListener('fetch')`), validates WebAssembly binary headers (`\x00asm` v1), and generates deterministic SHA-256 digests for tenant bundle cataloging.
+- **Multi-Zone Wildcard Route Compiler**: Implemented `internal/compiler/router.go` providing dynamic URL route compilation and matching across arbitrary domains, wildcard subdomains (`*.domain.com/*`), exact hosts, and path prefixes with specificity-based priority scoring.
+- **Zero-Copy Direct Response Streaming Pipeline**: Implemented `internal/compiler/stream.go` utilizing pre-allocated 64KB buffer pools (`sync.Pool`), immediate socket flushes via `http.Flusher`, and client disconnection cancellation detection (`context.Context`), eliminating heap allocation overhead during high-volume proxy responses.
+- **Compiler & Dynamic Route REST Endpoints**: Implemented `internal/compiler/handler.go` and wired `/api/compiler/*` into `main.go`, exposing `/compile`, `/workers` (CRUD), `/routes` (CRUD & pattern matching), and synthetic streaming benchmark endpoints (`/stream-test`).
+- **Interactive Compiler Console in Web Dashboard**: Enhanced `web/dist/index.html` with an interactive script minifier, live dynamic route injector, pattern match tester, and real-time zero-copy streaming benchmark runner.
+- **Compiler & Router Unit Test Suite**: Added 9 exhaustive unit tests in `internal/compiler/compiler_test.go` covering JavaScript lexical minification, Wasm header validation, bundle repository lifecycle, route priority scoring, zero-copy streaming integrity, cancellation handling, and thread-safe concurrency.
+
+### Changed
+- Mounted `/api/compiler/` routes on HTTP mux and initialized default edge worker and wildcard route mappings during application bootstrap in `main.go`.
+- Bumped application version to `0.7.0` across manifests (`package.json`, `web/package.json`) and security policy (`SECURITY.md`).
+
+---
+
 ## [0.6.0] - 2026-10-14
 
 ### Added
