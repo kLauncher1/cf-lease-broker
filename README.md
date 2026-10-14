@@ -18,6 +18,9 @@
 
 ## ⚡ Highlights
 
+- **Zero-Trust Mutual TLS (mTLS) & Client Certificate Verification**: Comprehensive X.509 client certificate chain verification, certificate revocation list (CRL) denylist checking, validity window enforcement, wildcard Subject Alternative Name (SAN) matching (`*.domain.com`), and common name / issuer access policies for upstream reverse proxy routes (`internal/mtls/verifier.go`).
+- **Ephemeral Certificate Authority (CA) & Peering Mesh**: Zero-dependency in-memory ECDSA P-256 root certificate generation, dynamic client certificate issuance, CRL serial tracking, and cryptographically signed inter-broker cluster peering tokens (`internal/mtls/ca.go`).
+- **Hardware-Backed TPM 2.0 Attestation & Windows Certificate Store**: Leverages Windows Cryptographic Next Generation (CNG) `ncrypt.dll` to query Microsoft Platform Crypto Provider for hardware TPM 2.0 presence, inspect the Windows system certificate store (`crypt32.dll`), and generate deterministic platform configuration register (PCR) quote measurements (`internal/mtls/tpm_windows.go`).
 - **High-Availability Raft Consensus Engine**: Multi-node Raft consensus cluster with randomized election timers (150-300ms), majority quorum leader election, Write-Ahead Log (WAL) journal with monotonic indexing and SHA-256 verification, and DNS SRV dynamic peer discovery (`net.LookupSRV`) with zero external dependencies (`internal/raft/`).
 - **Edge Worker Virtual Compiler & Packaging**: Fast in-memory lexical minifier and validator for JavaScript/Wasm Edge Worker bundles with comment stripping, syntax verification, and SHA-256 content hashing (`internal/compiler/bundle.go`).
 - **Multi-Zone Dynamic Route Injection**: High-performance wildcard route compiler matching arbitrary domains (`*.domain.com/path/*`) with priority weighting and dynamic route injection tables (`internal/compiler/router.go`).
@@ -81,19 +84,19 @@ node scripts/build_artifacts.mjs --verify
 │ • DNS SRV Peering │ • Quota Balancer  │ • Partitioned KV Cache Layer   │
 │ • Broker FSM Sync │ • Auto Failover   │ • Multi-Channel Webhooks       │
 ├───────────────────┼───────────────────┼────────────────────────────────┤
-│  internal/quota   │ internal/security │       internal/compiler        │
-│ • Prometheus      │ • Windows DPAPI   │ • Virtual JS Minifier / Wasm   │
-│ • Sliding-Window  │ • AES-256-GCM     │ • Multi-Zone Route Compiler    │
-│ • Auto-Probation  │ • HS256 JWT / RBAC│ • 64KB Zero-Copy Stream Pipe   │
-│ • Webhook Alerts  │ • Zeroize Memory  │ • Tenant Bundle Repository     │
+│   internal/mtls   │ internal/security │       internal/compiler        │
+│ • Ephemeral CA    │ • Windows DPAPI   │ • Virtual JS Minifier / Wasm   │
+│ • Client Cert X509│ • AES-256-GCM     │ • Multi-Zone Route Compiler    │
+│ • TPM 2.0 Attest  │ • HS256 JWT / RBAC│ • 64KB Zero-Copy Stream Pipe   │
+│ • Peering Tokens  │ • Zeroize Memory  │ • Tenant Bundle Repository     │
 ├───────────────────┴───────────────────┴────────────────────────────────┤
-│                         internal/config                                │
-│  • Zero-Downtime Hot Reloading • File Watcher & POSIX SIGHUP Listener  │
+│                         internal/quota & config                        │
+│  • Prometheus (/metrics) • Sliding Window • Zero-Downtime Hot Reload   │
 ├────────────────────────────────────────────────────────────────────────┤
 │                         net/http HTTP Engine                           │
-│   • /raft/* (Vote/Append/Status)       • /api/compiler/*               │
-│   • /metrics         • /proxy/{svc}/*  • /s3/{bkt}/{key}               │
-│   • /api/auth/*      • /api/quota/*    • /api/leases (Auth Guarded)    │
+│   • /api/mtls/* (Cert/Verify/TPM)      • /api/compiler/*               │
+│   • /raft/* (Vote/Append/Status)       • /proxy/{svc}/* (mTLS Guarded) │
+│   • /metrics         • /api/auth/*     • /s3/{bkt}/{key}               │
 │   • /api/accounts    • /api/security   • /api/config/* (Auth Guarded)  │
 ├────────────────────────────────────────────────────────────────────────┤
 │                         Embedded Web Dashboard                         │
@@ -303,10 +306,74 @@ curl http://localhost:9081/raft/journal
 
 ---
 
+## 🛡️ Zero-Trust Mutual TLS (mTLS) & Hardware Attestation
+
+`cf-lease-broker` incorporates a complete zero-trust mutual TLS (mTLS) engine, dynamic in-memory Ephemeral Certificate Authority (CA), and hardware-backed TPM 2.0 attestation:
+
+### 1. Ephemeral Certificate Authority & Dynamic Issuance (`internal/mtls/ca.go`)
+- **In-Memory Root Anchor**: Dynamically bootstraps an ECDSA P-256 root Certificate Authority (`x509.IsCA = true`) without external tools or OpenSSL dependencies.
+- **Client & Peer Certificates**: Issues short-lived, cryptographically signed X.509 client and peer certificates with custom Common Names, validity windows, and Subject Alternative Names (SANs).
+- **CRL Revocation**: Maintains a fast, thread-safe Certificate Revocation List (CRL) indexed by hexadecimal serial numbers with O(1) denylist lookups.
+- **Signed Peering Vouchers**: Generates and validates ECDSA-SHA256 peering tokens for zero-trust inter-broker cluster communication.
+
+### 2. Client Certificate Verification & Policy Enforcement (`internal/mtls/verifier.go`)
+- **Trust Chain Verification**: Validates inbound X.509 client certificates against the root CA pool (`x509.CertPool`).
+- **Policy Enforcement**: Enforces wildcard SAN matching (`*.edge.cluster.local`, CIDR blocks), allowed Common Names, allowed Issuers, and strict certificate expiration windows.
+- **Transparent Edge Header Extraction**: Extracts certificates from direct TLS connections (`r.TLS.PeerCertificates`) or standard edge forwarding headers (`X-Client-Cert-Pem`, `X-Forwarded-Client-Cert`, `X-Client-Cert-Der`).
+- **Reverse Proxy Guarding**: When `CF_REQUIRE_MTLS=true` is enabled, all requests through `/proxy/{service}/*` must present a verified client certificate.
+
+### 3. Hardware TPM 2.0 Attestation (`internal/mtls/tpm_windows.go`)
+- **Windows CNG Integration**: Queries Microsoft Cryptographic Next Generation (`ncrypt.dll`) for the "Microsoft Platform Crypto Provider" to verify TPM 2.0 presence.
+- **Windows System Certificate Store**: Inspects and validates machine/user certificate stores via `crypt32.dll` (`CertOpenSystemStoreW`).
+- **Platform Quotes**: Generates deterministic Platform Configuration Register (PCR) digests and endorsement key measurements for audit trails.
+
+### mTLS & TPM Curl Examples:
+
+```bash
+# 1. Inspect mTLS status, active Root CA, and TPM attestation state
+curl http://localhost:9081/api/mtls/status
+
+# 2. Download the Root CA certificate in PEM format
+curl http://localhost:9081/api/mtls/ca/cert -o root-ca.pem
+
+# 3. Issue an ephemeral client certificate
+curl -X POST http://localhost:9081/api/mtls/ca/issue \
+  -H "Content-Type: application/json" \
+  -d '{
+    "common_name": "worker-edge-alpha",
+    "sans": ["*.edge.broker.local", "127.0.0.1"],
+    "validity_hours": 24
+  }'
+
+# 4. Verify an X.509 PEM certificate against active policy
+curl -X POST http://localhost:9081/api/mtls/verify \
+  -H "Content-Type: application/json" \
+  -d '{"certificate_pem": "-----BEGIN CERTIFICATE-----\n..."}'
+
+# 5. Revoke a certificate serial number
+curl -X POST http://localhost:9081/api/mtls/revoke \
+  -H "Content-Type: application/json" \
+  -d '{"serial_number": "7b8a1c9d2e"}'
+
+# 6. Query hardware TPM 2.0 attestation quote
+curl http://localhost:9081/api/mtls/tpm/attest
+```
+
+---
+
 ## 📡 REST API Reference
 
 | Endpoint | Method | Auth | Description |
 | :--- | :---: | :---: | :--- |
+| `/api/mtls/status` | `GET` | Public | Inspect active Root CA stats, policy, and hardware TPM 2.0 attestation |
+| `/api/mtls/ca/cert` | `GET` | Public | Download Root CA public certificate in PEM format |
+| `/api/mtls/ca/issue` | `POST` | Public | Issue an ephemeral client/peer certificate with SANs and custom validity |
+| `/api/mtls/verify` | `POST` | Public | Evaluate an X.509 certificate PEM against active CA trust and security policy |
+| `/api/mtls/revoke` | `POST` | Public | Revoke a certificate serial number and add to CRL denylist |
+| `/api/mtls/tpm/attest` | `GET` | Public | Query Windows TPM 2.0 platform provider quote and system cert store |
+| `/api/mtls/peer-token` | `POST` | Public | Generate ECDSA-signed peering token for inter-broker cluster synchronization |
+| `/api/mtls/peer-token/verify` | `POST` | Public | Cryptographically verify inter-broker cluster peering token |
+| `/api/mtls/policy` | `POST/PUT` | Public | Update active client certificate verification policy |
 | `/raft/status` | `GET` | Public | Inspect local node role, term, leader ID, commit index, and cluster telemetry |
 | `/raft/peers` | `GET/POST` | Public | Inspect cluster peers and latency; manually register remote node |
 | `/raft/propose` | `POST` | Public | Propose a state machine command (`GRANT_LEASE`, `REVOKE_LEASE`, `UPDATE_QUOTA`, `SYNC_ACCOUNT`) |

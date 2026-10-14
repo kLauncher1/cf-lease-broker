@@ -549,6 +549,70 @@ export default {
       <div id="raft-diag-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 220px; overflow-y: auto;"></div>
     </section>
 
+    <!-- Zero-Trust Mutual TLS (mTLS) & Hardware Attestation Panel (Milestone 9) -->
+    <section class="mtls-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 16px; font-weight: 700; color: #fff;">Zero-Trust Mutual TLS (mTLS) &amp; TPM 2.0 Attestation</span>
+          <span id="mtls-status-badge" style="font-size: 11px; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 3px 10px; border-radius: 999px; font-weight: 600;">Root CA Active</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="action-btn" onclick="downloadCACert()" style="padding: 6px 12px; font-size: 11px; background: #0284c7;">Download Root CA (.pem)</button>
+          <button class="action-btn" onclick="queryTPMAttestation()" style="padding: 6px 12px; font-size: 11px; background: #6366f1;">TPM Quote Attest</button>
+        </div>
+      </div>
+
+      <!-- Telemetry Cards -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px;">
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Ephemeral Root CA</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-cf); margin-top: 4px;" id="mtls-ca-name">cf-lease-broker-root-ca</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;" id="mtls-ca-stats">Algorithm: ECDSA-P256-SHA256</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Certificates Issued / Revoked</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-main); margin-top: 4px;" id="mtls-cert-counts">0 Issued / 0 Revoked</div>
+          <div style="font-size: 11px; color: var(--accent-green); margin-top: 2px;">CRL Denylist Monitored</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Hardware TPM 2.0 Security</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #38bdf8; margin-top: 4px;" id="mtls-tpm-provider">Querying TPM...</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;" id="mtls-tpm-quote">PCR0-7 Quote Verified</div>
+        </div>
+      </div>
+
+      <!-- Interactive Controls Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">
+        <!-- Left: Issue Ephemeral Client Certificate -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">Issue Ephemeral Client Certificate</div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="mtls-issue-cn" placeholder="Common Name (e.g. edge-worker-alpha)" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; flex-grow: 1;">
+            <input type="text" id="mtls-issue-sans" placeholder="SANs (*.edge.local, 127.0.0.1)" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; flex-basis: 35%;">
+            <button class="action-btn" onclick="issueEphemeralCert()" style="padding: 6px 12px; font-size: 12px; background: #059669;">Issue Cert</button>
+          </div>
+          <textarea id="mtls-issued-output" rows="4" readonly placeholder="Generated X.509 PEM certificate and EC private key will appear here..." style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #38bdf8; font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 8px; border-radius: 6px; outline: none; width: 100%; resize: vertical;"></textarea>
+        </div>
+
+        <!-- Right: Verify Certificate & Revoke -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Validate X.509 Client PEM / Revoke</span>
+            <div style="display: flex; gap: 6px;">
+              <button class="action-btn" onclick="verifyCertPEM()" style="padding: 4px 8px; font-size: 11px; background: #2563eb;">Verify PEM</button>
+              <button class="action-btn" onclick="revokeCertSerial()" style="padding: 4px 8px; font-size: 11px; background: #dc2626;">Revoke Serial</button>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="mtls-revoke-serial" placeholder="Serial Number Hex to Revoke" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; width: 100%;">
+          </div>
+          <textarea id="mtls-verify-input" rows="4" placeholder="Paste X.509 Certificate PEM here to verify against active mTLS policy..." style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #f8fafc; font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 8px; border-radius: 6px; outline: none; width: 100%; resize: vertical;"></textarea>
+        </div>
+      </div>
+
+      <div id="mtls-diag-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 200px; overflow-y: auto;"></div>
+    </section>
+
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
       <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
@@ -679,6 +743,27 @@ export default {
                   </span>
                 </div>
               `).join('');
+            }
+          }
+        } catch (_) {}
+
+        try {
+          const mtlsRes = await fetch('/api/mtls/status').then(r => r.ok ? r.json() : null).catch(() => null);
+          if (mtlsRes) {
+            const caNameEl = document.getElementById('mtls-ca-name');
+            if (caNameEl && mtlsRes.ca) caNameEl.textContent = mtlsRes.ca.ca_common_name || 'cf-lease-broker-root-ca';
+            const caStatsEl = document.getElementById('mtls-ca-stats');
+            if (caStatsEl && mtlsRes.ca) caStatsEl.textContent = `Algorithm: ${mtlsRes.ca.algorithm} · Created: ${new Date(mtlsRes.ca.created_at).toLocaleDateString()}`;
+            const certCountsEl = document.getElementById('mtls-cert-counts');
+            if (certCountsEl && mtlsRes.ca) certCountsEl.textContent = `${mtlsRes.ca.issued_certs} Issued / ${mtlsRes.ca.revoked_count} Revoked`;
+            const tpmProvEl = document.getElementById('mtls-tpm-provider');
+            if (tpmProvEl && mtlsRes.tpm_attestation) {
+              tpmProvEl.textContent = mtlsRes.tpm_attestation.available ? 'Hardware TPM 2.0 (Active)' : (mtlsRes.tpm_attestation.provider || 'Software Token');
+              tpmProvEl.style.color = mtlsRes.tpm_attestation.available ? '#10b981' : '#38bdf8';
+            }
+            const tpmQuoteEl = document.getElementById('mtls-tpm-quote');
+            if (tpmQuoteEl && mtlsRes.tpm_attestation) {
+              tpmQuoteEl.textContent = `PCR0-7: ${mtlsRes.tpm_attestation.pcr_digest ? mtlsRes.tpm_attestation.pcr_digest.slice(0, 16) + '...' : 'Attested'}`;
             }
           }
         } catch (_) {}
@@ -1504,6 +1589,133 @@ export default {
       const resBox = document.getElementById('raft-diag-result');
       resBox.style.display = 'block';
       resBox.innerHTML = `<div style="color: #38bdf8;">Cluster peer statuses and DNS SRV discovery updated.</div>`;
+    }
+
+    async function downloadCACert() {
+      window.open('/api/mtls/ca/cert', '_blank');
+    }
+
+    async function queryTPMAttestation() {
+      const resBox = document.getElementById('mtls-diag-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = 'Querying Hardware TPM 2.0 and Windows Certificate Store...';
+      try {
+        const res = await fetch('/api/mtls/tpm/attest');
+        const data = await res.json();
+        resBox.innerHTML = `
+          <div style="color: #38bdf8; font-weight: 600; margin-bottom: 4px;">Hardware TPM 2.0 Attestation Verdict</div>
+          <div>Provider: <strong style="color: #fff;">${escapeHtml(data.provider)}</strong> (Available: <span style="color: ${data.available ? '#10b981' : '#ef4444'}; font-weight: 600;">${data.available}</span>)</div>
+          <div>Platform Quote: <code style="color: #fbbf24;">${escapeHtml(data.platform_quote)}</code></div>
+          <div>PCR Digest: <code style="color: #94a3b8;">${escapeHtml(data.pcr_digest)}</code></div>
+          <div>Certificate Store Synced: <span style="color: #10b981;">${escapeHtml(data.windows_store_synced)}</span> · Attested At: ${escapeHtml(data.attested_at)}</div>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">TPM Attestation Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function issueEphemeralCert() {
+      const cn = document.getElementById('mtls-issue-cn').value.trim();
+      const sansRaw = document.getElementById('mtls-issue-sans').value.trim();
+      const outputBox = document.getElementById('mtls-issued-output');
+      const resBox = document.getElementById('mtls-diag-result');
+      if (!cn) {
+        alert('Please specify a Common Name');
+        return;
+      }
+      const sans = sansRaw ? sansRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+      outputBox.value = 'Generating ECDSA P-256 key pair and signing certificate via Ephemeral CA...';
+
+      try {
+        const res = await fetch('/api/mtls/ca/issue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ common_name: cn, sans: sans, validity_hours: 24 })
+        });
+        const data = await res.json();
+        if (data.error) {
+          outputBox.value = `Error: ${data.message || data.error}`;
+          return;
+        }
+        outputBox.value = `${data.certificate_pem}\n${data.private_key_pem}`;
+        document.getElementById('mtls-verify-input').value = data.certificate_pem;
+        document.getElementById('mtls-revoke-serial').value = data.serial_number;
+
+        resBox.style.display = 'block';
+        resBox.innerHTML = `
+          <div style="color: #10b981; font-weight: 600;">Certificate Issued: ${escapeHtml(cn)}</div>
+          <div>Serial Number: <code style="color: #fbbf24;">${escapeHtml(data.serial_number)}</code></div>
+          <div>SHA-256 Fingerprint: <code style="color: #94a3b8;">${escapeHtml(data.fingerprint_sha256)}</code></div>
+          <div>Expires At: ${escapeHtml(data.expires_at)}</div>
+        `;
+        loadState();
+      } catch (err) {
+        outputBox.value = `Issuance Error: ${err.message}`;
+      }
+    }
+
+    async function verifyCertPEM() {
+      const pem = document.getElementById('mtls-verify-input').value.trim();
+      const resBox = document.getElementById('mtls-diag-result');
+      if (!pem) {
+        alert('Please paste a certificate PEM to verify');
+        return;
+      }
+      resBox.style.display = 'block';
+      resBox.innerHTML = 'Evaluating certificate against Ephemeral CA trust chain and security policy...';
+
+      try {
+        const res = await fetch('/api/mtls/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ certificate_pem: pem })
+        });
+        const data = await res.json();
+        const validColor = data.valid ? '#10b981' : '#ef4444';
+        resBox.innerHTML = `
+          <div style="font-weight: 600; color: ${validColor}; font-size: 13px;">Verdict: ${data.valid ? 'VERIFIED (Policy Compliant)' : 'REJECTED'}</div>
+          <div>Reason: <span style="color: #f8fafc;">${escapeHtml(data.reason)}</span></div>
+          ${data.certificate ? `
+            <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08);">
+              <div>Subject CN: <strong style="color: #fff;">${escapeHtml(data.certificate.subject_common_name)}</strong></div>
+              <div>Issuer CN: <span style="color: #94a3b8;">${escapeHtml(data.certificate.issuer_common_name)}</span></div>
+              <div>Serial: <code style="color: #fbbf24;">${escapeHtml(data.certificate.serial_number_hex)}</code></div>
+              <div>Validity: ${escapeHtml(data.certificate.not_before)} ~ ${escapeHtml(data.certificate.not_after)}</div>
+              <div>Fingerprint: <code style="color: #38bdf8;">${escapeHtml(data.certificate.fingerprint_sha256)}</code></div>
+            </div>
+          ` : ''}
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Verification Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function revokeCertSerial() {
+      const serial = document.getElementById('mtls-revoke-serial').value.trim();
+      const resBox = document.getElementById('mtls-diag-result');
+      if (!serial) {
+        alert('Please provide serial number hex to revoke');
+        return;
+      }
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Adding serial ${escapeHtml(serial)} to CRL denylist...`;
+
+      try {
+        const res = await fetch('/api/mtls/revoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serial_number: serial })
+        });
+        const data = await res.json();
+        if (data.error) {
+          resBox.innerHTML = `<span style="color: #ef4444;">Revocation Failed: ${escapeHtml(data.message || data.error)}</span>`;
+          return;
+        }
+        resBox.innerHTML = `<div style="color: #ef4444; font-weight: 600;">Certificate Serial ${escapeHtml(serial)} Successfully Revoked &amp; Added to CRL!</div>`;
+        loadState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Revocation Request Error: ${escapeHtml(err.message)}</span>`;
+      }
     }
 
     loadState();
