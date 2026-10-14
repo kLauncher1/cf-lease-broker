@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 [![Zero Dependency](https://img.shields.io/badge/Zero--Dependency-Self--Contained-38bdf8.svg)](#-quick-start)
 
-<sub>Crafted by **kLauncher1** · High-availability edge resource pooling and dynamic tenant leasing.</sub>
+<sub>Crafted by **kLauncher1** · High-availability edge resource pooling, secrets vault, and dynamic tenant leasing.</sub>
 
 </div>
 
@@ -19,6 +19,8 @@
 ## ⚡ Highlights
 
 - **Multi-Account Quota Aggregation**: Pools multiple free/pro Cloudflare accounts into a unified virtual compute cluster, overcoming single-account daily request boundaries.
+- **Production Secrets Vault**: Envelope encryption at rest using Windows DPAPI (`CryptProtectData`) and cross-platform AES-256-GCM with memory zeroization (`Zeroize`).
+- **HS256 JWT Authentication & RBAC**: Microservice and administrative authentication engine with HMAC-SHA256 tokens, constant-time verification, and thread-safe JTI revocation denylists.
 - **Virtual R2 S3-Compatible Gateway**: S3 REST protocol endpoints (`/s3/{bucket}/{key...}`) that stripe object storage across pooled R2 buckets with automatic 2MB chunking and SHA-256 integrity verification.
 - **Multi-Account Partitioned KV Cache**: Thread-safe partitioned KV storage layer with consistent FNV hashing, LRU memory caching, and TTL eviction.
 - **Automated Rate-Limit Interception & Zero-Downtime Failover**: Intercepts HTTP 429 Too Many Requests and gateway errors in real time, automatically rerouting inflight requests to the next healthy account in the pool.
@@ -68,14 +70,47 @@ go build -ldflags="-s -w" -o cf-lease-broker .
 │  • Quota Balancer │  • Payload Buffer │ • Partitioned KV Cache Layer   │
 │                   │  • Hop-by-Hop     │ • Quota Webhook Dispatcher     │
 ├───────────────────┴───────────────────┴────────────────────────────────┤
+│                       internal/security                                │
+│  • Windows DPAPI Bindings             • AES-256-GCM Secret Vault       │
+│  • HS256 JWT Token Engine             • RBAC Auth Middleware           │
+│  • JTI Revocation Denylist            • In-Memory Buffer Zeroization   │
+├────────────────────────────────────────────────────────────────────────┤
 │                         net/http HTTP Engine                           │
-│   • /s3/{bkt}/{key}  • /api/kv/*  • /api/webhooks/*  • /proxy/{svc}/*  │
-│   • /api/accounts    • /api/leases • /api/health                       │
+│   • /s3/{bkt}/{key}  • /api/kv/*      • /api/webhooks/*                │
+│   • /proxy/{svc}/*   • /api/accounts  • /api/leases (Auth Guarded)     │
+│   • /api/auth/*      • /api/security  • /api/health                    │
 ├────────────────────────────────────────────────────────────────────────┤
 │                         Embedded Web Dashboard                         │
 │                   (Glassmorphism UI via //go:embed)                    │
 │                  web/dist/index.html -> Port 9081                      │
 └────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🔒 Secrets Management & Authentication
+
+`cf-lease-broker` provides enterprise-grade secret storage and authentication out of the box with zero third-party dependencies:
+
+### 1. Envelope Encryption Vault (`internal/security/vault.go`)
+- **Windows DPAPI Integration**: On Windows systems, secrets are protected via Windows DPAPI (`CryptProtectData`), securing API keys with OS-level credentials (`dpapi:<base64>`).
+- **AES-256-GCM Envelope**: On non-Windows platforms (or when specified), secrets are encrypted using authenticated AES-256-GCM with unique 96-bit random nonces (`aes-gcm:<nonce>:<ciphertext>`).
+- **Memory Scrubbing**: Sensitive byte buffers are immediately wiped after use using the `Zeroize` memory scrubbing pattern (`for i := range b { b[i] = 0 }`).
+
+### 2. JWT & RBAC Middleware (`internal/security/middleware.go`)
+- **HS256 Standard Tokens**: Issues and verifies HMAC-SHA256 JWTs with constant-time signature verification (`crypto/subtle.ConstantTimeCompare`) to prevent timing side-channel attacks.
+- **Revocation Denylist**: Supports immediate token revocation by JTI (`POST /api/auth/revoke`) with automatic TTL expiration sweep.
+- **Guarded Administrative APIs**: Administrative endpoints (`/api/leases`, `/api/leases/revoke`, and `/api/security/*`) require valid `Authorization: Bearer <token>` or root admin bootstrap keys.
+
+```bash
+# 1. Issue an Operator JWT Token
+curl -X POST http://localhost:9081/api/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"sub": "gateway-client", "role": "operator", "duration_hours": 24}'
+
+# 2. Call Protected Leases Endpoint with Bearer Token
+curl -X GET http://localhost:9081/api/leases \
+  -H "Authorization: Bearer <issued_jwt_token>"
 ```
 
 ---
@@ -97,12 +132,6 @@ The broker exposes standard AWS S3-compatible endpoints allowing existing S3 SDK
 curl -i -X PUT http://localhost:9081/s3/assets/docs/whitepaper.pdf \
   -H "Content-Type: application/pdf" \
   --data-binary "@whitepaper.pdf"
-
-# Response headers:
-# HTTP/1.1 200 OK
-# ETag: "4f7a9c...-4"
-# x-amz-meta-striped-chunks: 4
-# x-amz-meta-accounts: cf-tenant-alpha,cf-tenant-bravo,cf-tenant-charlie
 
 # 2. Retrieve object
 curl http://localhost:9081/s3/assets/docs/whitepaper.pdf -o downloaded.pdf
@@ -131,44 +160,31 @@ The broker provides a transparent edge reverse proxy at `/proxy/{service}/*`. Ca
    - `X-CF-Broker-Account: {account_id}` (tenant that fulfilled the request)
    - `X-CF-Broker-Attempts: {count}` (number of attempts required)
 
-### Example Proxy Call:
-
-```bash
-# Transparently forward GET to auth-gateway on the optimal account
-curl -i http://localhost:9081/proxy/auth-gateway/v1/verify
-
-# HTTP/1.1 200 OK
-# X-CF-Broker-Account: cf-tenant-charlie
-# X-CF-Broker-Attempts: 1
-```
-
-If `cf-tenant-charlie` hits a rate limit, the caller receives the exact same response from `cf-tenant-bravo` with `X-CF-Broker-Attempts: 2` and zero client-side errors.
-
 ---
 
 ## 📡 REST API Reference
 
-| Endpoint | Method | Description |
-| :--- | :---: | :--- |
-| `/s3/{bucket}/{key...}` | `PUT/GET/HEAD/DELETE` | S3-compatible virtual storage gateway with chunk striping |
-| `/s3/{bucket}` | `GET` | S3 ListObjectsV2 XML listing for bucket |
-| `/api/kv/{ns}/{key}` | `GET/PUT/DELETE` | Multi-account partitioned KV caching endpoint |
-| `/api/kv/stats` | `GET` | Cache efficiency, hit rate, and tenant partition metrics |
-| `/api/webhooks/alerts` | `GET` | Logged quota threshold notifications |
-| `/api/webhooks/test` | `POST` | Dispatches test quota threshold notification |
-| `/proxy/{service}/*` | `ANY` | Transparent failover reverse proxy to Cloudflare Workers with 429 interception |
-| `/api/accounts` | `GET` | Snapshot of all pooled Cloudflare accounts, limits, and usage |
-| `/api/leases` | `GET` | List all active and revoked resource leases |
-| `/api/leases` | `POST` | Grant a new dynamic lease (`target_service`, `resource_type`, `duration_hours`) |
-| `/api/leases/revoke` | `POST` | Immediately invalidate and revoke a lease voucher (`?id=lse_...`) |
-| `/api/health` | `GET` | Verifies latency and connectivity to Cloudflare's public API edge |
-
-### Grant Lease Request Example
-```bash
-curl -X POST http://localhost:9081/api/leases \
-  -H "Content-Type: application/json" \
-  -d '{"target_service": "auth-gateway", "resource_type": "Workers", "duration_hours": 24}'
-```
+| Endpoint | Method | Auth | Description |
+| :--- | :---: | :---: | :--- |
+| `/api/auth/token` | `POST` | Public / Key | Issue scoped HS256 JWT bearer token |
+| `/api/auth/revoke` | `POST` | Bearer | Revoke a JWT token by JTI |
+| `/api/auth/me` | `GET` | Bearer | Verify and inspect active caller claims |
+| `/api/auth/status` | `GET` | Public | Inspect cryptographic providers and auth status |
+| `/api/security/encrypt` | `POST` | Bearer | Encrypt secret payload into DPAPI or AES-GCM envelope |
+| `/api/security/decrypt` | `POST` | Bearer | Test round-trip envelope decryption |
+| `/api/security/status` | `GET` | Bearer | Inspect secret vault engine and active provider |
+| `/s3/{bucket}/{key...}` | `PUT/GET/HEAD/DELETE` | Public | S3-compatible virtual storage gateway with chunk striping |
+| `/s3/{bucket}` | `GET` | Public | S3 ListObjectsV2 XML listing for bucket |
+| `/api/kv/{ns}/{key}` | `GET/PUT/DELETE` | Public | Multi-account partitioned KV caching endpoint |
+| `/api/kv/stats` | `GET` | Public | Cache efficiency, hit rate, and tenant partition metrics |
+| `/api/webhooks/alerts` | `GET` | Public | Logged quota threshold notifications |
+| `/api/webhooks/test` | `POST` | Public | Dispatches test quota threshold notification |
+| `/proxy/{service}/*` | `ANY` | Public | Transparent failover reverse proxy with 429 interception |
+| `/api/accounts` | `GET` | Public | Snapshot of all pooled Cloudflare accounts and limits |
+| `/api/leases` | `GET` | **Bearer** | List all active and revoked resource leases |
+| `/api/leases` | `POST` | **Bearer** | Grant a new dynamic lease (`target_service`, `resource_type`) |
+| `/api/leases/revoke` | `POST` | **Bearer** | Immediately invalidate and revoke a lease voucher (`?id=lse_...`) |
+| `/api/health` | `GET` | Public | Verifies latency and connectivity to Cloudflare's public API edge |
 
 ---
 

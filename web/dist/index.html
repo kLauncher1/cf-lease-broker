@@ -248,6 +248,74 @@
       <div id="s3-test-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle);"></div>
     </section>
 
+    <!-- Production Secrets Vault & JWT Authentication -->
+    <div class="section-header">
+      <span class="section-title">Production Secrets Vault &amp; JWT Auth (<code style="font-family: 'JetBrains Mono', monospace; color: var(--accent-green); font-size: 14px;">/api/security/* &amp; /api/auth/*</code>)</span>
+      <span style="font-size: 12px; color: var(--text-muted);">Windows DPAPI / AES-256-GCM &amp; HS256 RBAC Token Engine</span>
+    </div>
+
+    <section class="security-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-green);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Envelope Encryption Vault</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-main);" id="sec-vault-status">DPAPI / AES-256-GCM Active</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Hardware/OS-backed token protection with zeroization</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-cf);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Active Session Role</div>
+          <div style="font-size: 13px; font-weight: 600; color: var(--accent-cf);" id="sec-active-role">Admin (Root Key Injected)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Constant-time timing defense &amp; JTI denylist</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-blue);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Protected Leases API</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-blue);" id="sec-guard-status">Enforced (Bearer Auth)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Administrative grant &amp; revoke endpoints guarded</div>
+        </div>
+      </div>
+
+      <!-- Live Token & Vault Tools -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">
+        <!-- Left: JWT Token Generator & Inspector -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">JWT Token Issuer &amp; Session</div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="sec-token-sub" placeholder="Subject (e.g. gateway-app)" value="console-admin" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; flex-grow: 1;">
+            <select id="sec-token-role" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none;">
+              <option value="admin">Admin</option>
+              <option value="operator">Operator</option>
+              <option value="service">Service</option>
+            </select>
+            <button class="action-btn" onclick="issueSecToken()" style="padding: 6px 12px; font-size: 12px;">Issue Token</button>
+          </div>
+          <input type="text" id="sec-bearer-token" placeholder="Bearer Token (Paste custom or issued token here)" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #38bdf8; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; width: 100%;">
+          <div style="display: flex; gap: 8px;">
+            <button class="action-btn" onclick="applyBearerToken()" style="padding: 5px 10px; font-size: 11px; background: #0284c7;">Apply to Session</button>
+            <button class="action-btn" onclick="resetToDevAdmin()" style="padding: 5px 10px; font-size: 11px; background: #334155;">Reset to Dev Admin</button>
+            <button class="action-btn" onclick="inspectAuthMe()" style="padding: 5px 10px; font-size: 11px; background: #475569;">Inspect /api/auth/me</button>
+          </div>
+        </div>
+
+        <!-- Right: Real-time Vault Envelope Encryptor -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">Live Secret Vault Encryptor</div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="sec-vault-input" placeholder="Secret Key (e.g. cftok_live_alpha_9876)" value="cftok_live_alpha_production_secret" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; flex-grow: 1;">
+            <select id="sec-vault-provider" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none;">
+              <option value="auto">Auto</option>
+              <option value="dpapi">DPAPI</option>
+              <option value="aes-gcm">AES-GCM</option>
+            </select>
+            <button class="action-btn" onclick="encryptVaultSecret()" style="padding: 6px 12px; font-size: 12px; background: #059669;">Encrypt</button>
+          </div>
+          <input type="text" id="sec-vault-envelope" placeholder="Encrypted Envelope (dpapi:... or aes-gcm:...)" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #10b981; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; width: 100%;">
+          <div style="display: flex; gap: 8px;">
+            <button class="action-btn" onclick="decryptVaultEnvelope()" style="padding: 5px 10px; font-size: 11px; background: #0d9488;">Test Decrypt Round-trip</button>
+          </div>
+        </div>
+      </div>
+      <div id="sec-test-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle);"></div>
+    </section>
+
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
       <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
@@ -276,13 +344,35 @@
   </main>
 
   <script>
+    let authToken = localStorage.getItem('cf_auth_token') || 'cf_admin_dev_token_9081';
+
+    function getAuthHeaders(headers = {}) {
+      return {
+        ...headers,
+        'Authorization': `Bearer ${authToken}`
+      };
+    }
+
+    async function fetchAuth(url, options = {}) {
+      options.headers = getAuthHeaders(options.headers);
+      return fetch(url, options);
+    }
+
     async function loadState() {
       try {
-        const [accRes, leaseRes, kvStats] = await Promise.all([
-          fetch('/api/accounts').then(r => r.json()),
-          fetch('/api/leases').then(r => r.json()),
-          fetch('/api/kv/stats').then(r => r.json()).catch(() => null)
+        const [accRes, leaseRes, kvStats, secStatus] = await Promise.all([
+          fetch('/api/accounts').then(r => r.json()).catch(() => []),
+          fetchAuth('/api/leases').then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch('/api/kv/stats').then(r => r.json()).catch(() => null),
+          fetch('/api/auth/status').then(r => r.json()).catch(() => null)
         ]);
+
+        if (secStatus) {
+          const vEl = document.getElementById('sec-vault-status');
+          if (vEl) {
+            vEl.textContent = secStatus.dpapi_supported ? 'DPAPI (Windows Native Active)' : 'AES-256-GCM (Master Key Active)';
+          }
+        }
 
         if (kvStats) {
           const kvEl = document.getElementById('kv-cache-stats');
@@ -325,7 +415,7 @@
         document.getElementById('active-leases-count').textContent = `Active Leases: ${activeCount}`;
 
         if (leaseRes.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 24px;">No active leases issued. Click "+ Issue New Lease" to create one.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 24px;">No active leases issued or token authentication required.</td></tr>`;
         } else {
           tbody.innerHTML = leaseRes.map(l => `
             <tr>
@@ -350,17 +440,23 @@
       const serviceName = prompt('Enter target microservice name (e.g. auth-gateway, media-api):', 'auth-gateway-' + Math.floor(Math.random() * 900 + 100));
       if (!serviceName) return;
 
-      await fetch('/api/leases', {
+      const res = await fetchAuth('/api/leases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target_service: serviceName, resource_type: 'Workers', duration_hours: 24 })
       });
+      if (!res.ok) {
+        alert('Failed to issue lease: ' + res.status + ' ' + res.statusText);
+      }
       loadState();
     }
 
     async function revokeLease(leaseId) {
       if (!confirm(`Are you sure you want to revoke lease ${leaseId}?`)) return;
-      await fetch(`/api/leases/revoke?id=${leaseId}`, { method: 'POST' });
+      const res = await fetchAuth(`/api/leases/revoke?id=${leaseId}`, { method: 'POST' });
+      if (!res.ok) {
+        alert('Failed to revoke lease: ' + res.status + ' ' + res.statusText);
+      }
       loadState();
     }
 
@@ -517,6 +613,147 @@
         `;
       } catch (err) {
         resBox.innerHTML = `<span style="color: #ef4444;">List Error: ${err.message}</span>`;
+      }
+    }
+
+    async function issueSecToken() {
+      const sub = document.getElementById('sec-token-sub').value.trim() || 'console-admin';
+      const role = document.getElementById('sec-token-role').value;
+      const resBox = document.getElementById('sec-test-result');
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Requesting HS256 JWT Token for sub="${sub}", role="${role}"...`;
+
+      try {
+        const res = await fetch('/api/auth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sub, role, duration_hours: 24, admin_key: authToken })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('sec-bearer-token').value = data.token;
+          resBox.innerHTML = `
+            <div style="color: #10b981; font-weight: 600; margin-bottom: 6px;">HS256 JWT Token Issued Successfully (24h TTL)</div>
+            <pre style="margin-top: 6px; color: #f8fafc; white-space: pre-wrap; max-height: 150px; overflow-y: auto;">${JSON.stringify(data.claims, null, 2)}</pre>
+          `;
+        } else {
+          resBox.innerHTML = `<span style="color: #ef4444;">Token Issue Failed: ${data.error || res.statusText}</span>`;
+        }
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function applyBearerToken() {
+      const val = document.getElementById('sec-bearer-token').value.trim();
+      if (!val) {
+        alert('Please paste or issue a bearer token first');
+        return;
+      }
+      authToken = val;
+      localStorage.setItem('cf_auth_token', val);
+      await inspectAuthMe();
+      loadState();
+    }
+
+    async function resetToDevAdmin() {
+      authToken = 'cf_admin_dev_token_9081';
+      localStorage.removeItem('cf_auth_token');
+      document.getElementById('sec-bearer-token').value = authToken;
+      document.getElementById('sec-active-role').textContent = 'Admin (Root Key Injected)';
+      const resBox = document.getElementById('sec-test-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = `<span style="color: #38bdf8;">Session reset to default Admin Root Token (cf_admin_dev_token_9081)</span>`;
+      loadState();
+    }
+
+    async function inspectAuthMe() {
+      const resBox = document.getElementById('sec-test-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Verifying active token against /api/auth/me...`;
+
+      try {
+        const res = await fetchAuth('/api/auth/me');
+        const data = await res.json();
+        if (res.ok && data.authenticated) {
+          document.getElementById('sec-active-role').textContent = `${data.claims.role.toUpperCase()} (${data.claims.sub})`;
+          resBox.innerHTML = `
+            <div style="color: #10b981; font-weight: 600; margin-bottom: 6px;">Active Identity Verified</div>
+            <pre style="margin-top: 6px; color: #f8fafc; white-space: pre-wrap; max-height: 150px; overflow-y: auto;">${JSON.stringify(data.claims, null, 2)}</pre>
+          `;
+        } else {
+          document.getElementById('sec-active-role').textContent = 'Unauthenticated / Invalid';
+          resBox.innerHTML = `<span style="color: #ef4444;">Auth Check Failed: ${data.error || 'Invalid Token'}</span>`;
+        }
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function encryptVaultSecret() {
+      const secret = document.getElementById('sec-vault-input').value;
+      const provider = document.getElementById('sec-vault-provider').value;
+      const resBox = document.getElementById('sec-test-result');
+
+      if (!secret) {
+        alert('Please enter a secret key');
+        return;
+      }
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Encrypting secret with provider "${provider}"...`;
+
+      try {
+        const res = await fetchAuth('/api/security/encrypt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ secret, provider })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('sec-vault-envelope').value = data.envelope;
+          resBox.innerHTML = `
+            <div style="color: #10b981; font-weight: 600; margin-bottom: 6px;">Vault Envelope Generated</div>
+            <div><strong>Envelope:</strong> <code style="color: #38bdf8;">${data.envelope}</code></div>
+          `;
+        } else {
+          resBox.innerHTML = `<span style="color: #ef4444;">Encryption Failed: ${data.error || res.statusText}</span>`;
+        }
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function decryptVaultEnvelope() {
+      const envelope = document.getElementById('sec-vault-envelope').value.trim();
+      const resBox = document.getElementById('sec-test-result');
+
+      if (!envelope) {
+        alert('Please generate or provide an encrypted envelope first');
+        return;
+      }
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Decrypting envelope round-trip...`;
+
+      try {
+        const res = await fetchAuth('/api/security/decrypt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ envelope })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          resBox.innerHTML = `
+            <div style="color: #10b981; font-weight: 600; margin-bottom: 6px;">Round-trip Decryption Successful</div>
+            <div><strong>Recovered Secret:</strong> <code style="color: #f38020;">${data.secret}</code></div>
+          `;
+        } else {
+          resBox.innerHTML = `<span style="color: #ef4444;">Decryption Failed: ${data.error || res.statusText}</span>`;
+        }
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
       }
     }
 
