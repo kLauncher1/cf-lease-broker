@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-10-14
+
+### Added
+- **High-Availability Raft Consensus Engine**: Implemented `internal/raft/node.go` and `internal/raft/types.go` providing a zero-external-dependency Raft consensus engine with randomized election timers (150-300ms), 50ms leader heartbeats, majority quorum voting, automatic leader failover, and candidate step-down on encountering higher terms.
+- **Write-Ahead Log (WAL) Transaction Journal**: Implemented `internal/raft/journal.go` featuring monotonic log entry indexing, conflicting entry truncation, commit index progression, SHA-256 integrity checksum verification, and optional persistent disk synchronization (`raft_journal.wal`).
+- **Dynamic Peer Discovery via DNS SRV Records**: Implemented `internal/raft/discovery.go` querying DNS SRV records (`net.LookupSRV`) with static address fallback, runtime manual peer registration, and real-time round-trip latency tracking.
+- **Concrete Broker Finite State Machine (BrokerFSM)**: Implemented `internal/raft/fsm_broker.go` deterministically applying replicated cluster commands (`GRANT_LEASE`, `REVOKE_LEASE`, `SYNC_ACCOUNT`, `UPDATE_QUOTA`, `NOOP`) across `broker.PoolManager` and `broker.LeaseEngine`, alongside state snapshotting and hydration routines.
+- **Raft Consensus REST API & HTTP Transport**: Implemented `internal/raft/handler.go` and mounted `/raft/*` routes in `main.go`, exposing `/raft/vote`, `/raft/append`, `/raft/status`, `/raft/propose`, `/raft/peers`, and `/raft/journal` endpoints.
+- **Interactive Glassmorphism Raft Consensus Dashboard Panel**: Enhanced `web/dist/index.html` with an interactive cluster topology monitor, real-time node role / term badge, leader status tracker, command proposer with pre-configured command templates, WAL journal inspector, and DNS SRV peer status table.
+- **Comprehensive Raft & Cluster Unit Test Suite**: Added 8 exhaustive unit and multi-node cluster tests in `internal/raft/raft_test.go` covering journal append and checksum integrity, follower truncation, WAL disk persistence and recovery, DNS SRV static fallback, BrokerFSM command execution and snapshots, single-node leader bootstrapping, 3-node cluster election, quorum replication, leader failover, and HTTP endpoints.
+
+### Changed
+- Mounted `/raft/` routes on HTTP mux and initialized `RaftNode`, `Journal`, `PeerDiscovery`, and `BrokerFSM` with environment variable overrides (`CF_RAFT_NODE_ID`, `CF_RAFT_PEERS`, `CF_RAFT_DISCOVERY_DOMAIN`, `CF_RAFT_DATA_DIR`) in `main.go`.
+- Extended `internal/broker/lease.go` with `ApplyVoucher` method to support deterministic state replication from follower nodes.
+- Linked lease grant and revocation endpoints (`/api/leases`) to propose cluster-wide state machine transactions when running as the active Raft leader.
+- Bumped application version to `0.8.0` across manifests (`package.json`, `web/package.json`) and security policy (`SECURITY.md`).
+
+---
+
 ## [0.7.0] - 2026-10-14
 
 ### Added

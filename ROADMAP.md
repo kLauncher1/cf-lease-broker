@@ -64,42 +64,45 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 
 ---
 
-## Milestone 8: v1.0.0 (High-Availability Raft State Machine for Distributed Broker Clusters)
-- [ ] Multi-node Raft consensus layer for cross-region lease broker synchronization.
-- [ ] Automatic leader election and peer discovery via DNS SRV records.
-- [ ] Distributed transaction journal with zero-data-loss failover guarantees.
+## Release: v0.8.0 (High-Availability Raft State Machine for Distributed Broker Clusters)
+- [x] Multi-node Raft consensus engine with randomized election timers (150-300ms) and majority quorum voting.
+- [x] Write-Ahead Log (WAL) transaction journal with monotonic indexing and SHA-256 integrity verification.
+- [x] Automatic peer discovery via DNS SRV records with static fallback and latency tracking.
+- [x] Broker state machine replicating lease grants, revocations, account profiles, and quota changes.
+- [x] Full REST API endpoints (`/raft/*`) and interactive glassmorphism cluster monitor panel.
+- [x] Comprehensive unit and multi-node failover test suites with zero external dependencies.
 
 ---
 
-## Milestone 9: v1.1.0 (Zero-Trust Mutual TLS & Upstream Verification)
+## Release: v0.9.0 (Zero-Trust Mutual TLS & Upstream Verification)
 - [ ] Mutual TLS (mTLS) client certificate verification for upstream edge reverse proxy routes.
 - [ ] Ephemeral CA token generation for inter-broker cluster peering.
 - [ ] Hardware-backed TPM 2.0 key attestation and Windows certificate store integration.
 
 ---
 
-## Milestone 10: v1.2.0 (Autonomous Cost Optimization & Billing Ledger)
+## Release: v0.10.0 (Autonomous Cost Optimization & Billing Ledger)
 - [ ] Granular per-lease compute and bandwidth metering with micro-cent cost attribution.
 - [ ] Automated workload migration away from paid tier overages to standby free tier accounts.
 - [ ] Exportable billing journals in CSV, JSONL, and OpenCost specification formats.
 
 ---
 
-## Milestone 11: v1.3.0 (Intelligent Edge Health Radar & Anycast Routing)
+## Release: v0.11.0 (Intelligent Edge Health Radar & Anycast Routing)
 - [ ] Synthetic probe pinging all 330+ Cloudflare edge PoPs for real-time latency map construction.
 - [ ] Sub-millisecond geographic tenant selection prioritizing nearest healthy Cloudflare colo.
 - [ ] BGP route change detection and dynamic lease migration before network packet loss occurs.
 
 ---
 
-## Milestone 12: v1.4.0 (Adaptive Zero-Copy Compression & Transcoding)
+## Release: v0.12.0 (Adaptive Zero-Copy Compression & Transcoding)
 - [ ] Dynamic payload inspection selecting optimal compression algorithm (Brotli, Zstandard, gzip) based on client Accept-Encoding.
 - [ ] Real-time byte streaming through pre-allocated compressor buffers with zero intermediate heap allocations.
 - [ ] Dynamic dictionary training for tenant API JSON payloads reducing bandwidth by up to 85%.
 
 ---
 
-## Milestone 13: v1.5.0 (Edge Key-Value Geo-Replication Mesh)
+## Release: v0.13.0 (Edge Key-Value Geo-Replication Mesh)
 - [ ] Multi-master asynchronous KV replication across active broker nodes with vector clock conflict resolution.
 - [ ] CRDT primitives for distributed counter and set synchronization across edge clusters.
 - [ ] Read-your-writes and monotonic-read consistency guarantees for regional tenant workers.

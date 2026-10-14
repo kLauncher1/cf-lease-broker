@@ -18,6 +18,7 @@
 
 ## ⚡ Highlights
 
+- **High-Availability Raft Consensus Engine**: Multi-node Raft consensus cluster with randomized election timers (150-300ms), majority quorum leader election, Write-Ahead Log (WAL) journal with monotonic indexing and SHA-256 verification, and DNS SRV dynamic peer discovery (`net.LookupSRV`) with zero external dependencies (`internal/raft/`).
 - **Edge Worker Virtual Compiler & Packaging**: Fast in-memory lexical minifier and validator for JavaScript/Wasm Edge Worker bundles with comment stripping, syntax verification, and SHA-256 content hashing (`internal/compiler/bundle.go`).
 - **Multi-Zone Dynamic Route Injection**: High-performance wildcard route compiler matching arbitrary domains (`*.domain.com/path/*`) with priority weighting and dynamic route injection tables (`internal/compiler/router.go`).
 - **Zero-Copy Direct Streaming Pipeline**: Low-latency edge response streaming utilizing pre-allocated 64KB buffer pools (`sync.Pool`), immediate chunk flushing (`http.Flusher`), and client disconnection detection (`internal/compiler/stream.go`).
@@ -74,25 +75,26 @@ node scripts/build_artifacts.mjs --verify
 │                            cf-lease-broker                             │
 │                         Single Go Executable                           │
 ├───────────────────┬───────────────────┬────────────────────────────────┤
-│  internal/broker  │  internal/proxy   │       internal/storage         │
-│  • Account Pool   │  • Reverse Proxy  │ • Virtual S3 Gateway (/s3/...) │
-│  • Dynamic Leases │  • 429 Failover   │ • 2MB Striped Chunker          │
-│  • Quota Balancer │  • Payload Buffer │ • Partitioned KV Cache Layer   │
+│   internal/raft   │  internal/broker  │       internal/storage         │
+│ • Raft Node Core  │ • Account Pool    │ • Virtual S3 Gateway (/s3/...) │
+│ • WAL Journal     │ • Dynamic Leases  │ • 2MB Striped Chunker          │
+│ • DNS SRV Peering │ • Quota Balancer  │ • Partitioned KV Cache Layer   │
+│ • Broker FSM Sync │ • Auto Failover   │ • Multi-Channel Webhooks       │
 ├───────────────────┼───────────────────┼────────────────────────────────┤
 │  internal/quota   │ internal/security │       internal/compiler        │
-│  • Prometheus     │ • Windows DPAPI   │ • Virtual JS Minifier / Wasm   │
-│  • Sliding-Window │ • AES-256-GCM     │ • Multi-Zone Route Compiler    │
-│  • Auto-Probation │ • HS256 JWT / RBAC│ • 64KB Zero-Copy Stream Pipe   │
-│  • Webhook Alerts │ • Zeroize Memory  │ • Tenant Bundle Repository     │
+│ • Prometheus      │ • Windows DPAPI   │ • Virtual JS Minifier / Wasm   │
+│ • Sliding-Window  │ • AES-256-GCM     │ • Multi-Zone Route Compiler    │
+│ • Auto-Probation  │ • HS256 JWT / RBAC│ • 64KB Zero-Copy Stream Pipe   │
+│ • Webhook Alerts  │ • Zeroize Memory  │ • Tenant Bundle Repository     │
 ├───────────────────┴───────────────────┴────────────────────────────────┤
 │                         internal/config                                │
 │  • Zero-Downtime Hot Reloading • File Watcher & POSIX SIGHUP Listener  │
 ├────────────────────────────────────────────────────────────────────────┤
 │                         net/http HTTP Engine                           │
-│   • /metrics         • /api/compiler/* • /s3/{bkt}/{key}               │
-│   • /proxy/{svc}/*   • /api/quota/*    • /api/leases (Auth Guarded)    │
-│   • /api/auth/*      • /api/security   • /api/config/* (Auth Guarded)  │
-│   • /api/accounts    • /api/health                                     │
+│   • /raft/* (Vote/Append/Status)       • /api/compiler/*               │
+│   • /metrics         • /proxy/{svc}/*  • /s3/{bkt}/{key}               │
+│   • /api/auth/*      • /api/quota/*    • /api/leases (Auth Guarded)    │
+│   • /api/accounts    • /api/security   • /api/config/* (Auth Guarded)  │
 ├────────────────────────────────────────────────────────────────────────┤
 │                         Embedded Web Dashboard                         │
 │                   (Glassmorphism UI via //go:embed)                    │
@@ -232,10 +234,85 @@ The broker features an integrated compilation and routing engine for multi-tenan
 
 ---
 
+## 🤝 High-Availability Raft State Machine for Distributed Broker Clusters
+
+`cf-lease-broker` embeds a zero-dependency Raft consensus engine (`internal/raft/`) enabling multi-region broker clustering, zero-data-loss lease state replication, and automatic leader failover:
+
+### Core Architecture & Consensus Primitives:
+1. **Quorum Leader Election & Randomized Timers**: Nodes transition across Follower, Candidate, and Leader states. Randomized election timeouts (150–300ms) prevent split-vote deadlocks, while a 50ms heartbeat ticker sustains leader authority across majority quorums `((N/2) + 1)`.
+2. **Write-Ahead Log (WAL) Journal (`internal/raft/journal.go`)**: Enforces monotonic transaction indexing with SHA-256 integrity checksums. Follower log consistency is validated before appending, automatically truncating conflicting uncommitted entries. Supports optional append-only disk persistence (`raft_journal.wal`).
+3. **Dynamic Peer Discovery via DNS SRV (`internal/raft/discovery.go`)**: Automatically resolves cluster peers via RFC 2782 DNS SRV records (`_raft._tcp.<domain>`) with graceful fallback to static environment mappings (`CF_RAFT_PEERS`) and runtime manual registration (`POST /raft/peers`).
+4. **Broker Finite State Machine (`internal/raft/fsm_broker.go`)**: Replicates transaction commands deterministically across all nodes:
+   - `GRANT_LEASE`: Replicates active lease vouchers across the cluster.
+   - `REVOKE_LEASE`: Propagates lease revocation to all peer engines.
+   - `SYNC_ACCOUNT`: Synchronizes tenant profiles and quota limits.
+   - `UPDATE_QUOTA`: Propagates incremental daily worker requests, R2 storage deltas, and KV read counts.
+   - `NOOP`: Consensus barrier probes for cluster readiness checks.
+
+### Cluster Topology Flow:
+
+```text
+ Client / Microservice
+        │
+        ▼ (POST /raft/propose or /api/leases)
+┌───────────────────────────────────────┐
+│           Leader Broker Node          │
+│  ┌───────────────┐ ┌────────────────┐ │
+│  │  WAL Journal  │ │   Broker FSM   │ │
+│  └───────┬───────┘ └────────────────┘ │
+└──────────┼────────────────────────────┘
+           │ AppendEntries (50ms Heartbeat / Log Replication)
+     ┌─────┴────────────────┐
+     ▼                      ▼
+┌──────────────────┐  ┌──────────────────┐
+│ Follower Node 2  │  │ Follower Node 3  │
+│ (Quorum Ack 2/3) │  │ (Quorum Ack 3/3) │
+└──────────────────┘  └──────────────────┘
+```
+
+### Raft Cluster Curl Examples:
+
+```bash
+# 1. Inspect local node status and cluster topology
+curl http://localhost:9081/raft/status
+
+# 2. Query peer health and round-trip latency
+curl http://localhost:9081/raft/peers
+
+# 3. Manually register a new peer node
+curl -X POST http://localhost:9081/raft/peers \
+  -H "Content-Type: application/json" \
+  -d '{"id": "node-2", "address": "http://127.0.0.1:9082"}'
+
+# 4. Propose a state machine transaction to the cluster
+curl -X POST http://localhost:9081/raft/propose \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "GRANT_LEASE",
+    "data": {
+      "lease_id": "lse_edge_distributed_01",
+      "account_id": "cf-tenant-alpha",
+      "target_service": "auth-service",
+      "resource_type": "Workers"
+    }
+  }'
+
+# 5. Inspect replicated WAL journal entries and SHA-256 checksums
+curl http://localhost:9081/raft/journal
+```
+
+---
+
 ## 📡 REST API Reference
 
 | Endpoint | Method | Auth | Description |
 | :--- | :---: | :---: | :--- |
+| `/raft/status` | `GET` | Public | Inspect local node role, term, leader ID, commit index, and cluster telemetry |
+| `/raft/peers` | `GET/POST` | Public | Inspect cluster peers and latency; manually register remote node |
+| `/raft/propose` | `POST` | Public | Propose a state machine command (`GRANT_LEASE`, `REVOKE_LEASE`, `UPDATE_QUOTA`, `SYNC_ACCOUNT`) |
+| `/raft/journal` | `GET` | Public | Snapshot of all replicated WAL journal entries with SHA-256 checksums |
+| `/raft/vote` | `POST` | Public | Raft election ballot endpoint for candidate votes |
+| `/raft/append` | `POST` | Public | Raft heartbeat and log replication RPC endpoint |
 | `/metrics` | `GET` | Public | Standard Prometheus 0.0.4 text format metrics scraper |
 | `/api/compiler/compile` | `POST` | Public | Compiles & minifies JavaScript worker source, returning compression ratio and syntax status |
 | `/api/compiler/workers` | `GET` | Public | List all deployed worker bundles and SHA-256 content hashes |

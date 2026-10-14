@@ -2,6 +2,7 @@ package broker
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -92,6 +93,47 @@ func (le *LeaseEngine) ListLeases() []LeaseVoucher {
 		res = append(res, *l)
 	}
 	return res
+}
+
+// GetLease retrieves an active or expired voucher by ID.
+func (le *LeaseEngine) GetLease(leaseID string) (*LeaseVoucher, bool) {
+	le.mu.RLock()
+	defer le.mu.RUnlock()
+
+	voucher, exists := le.leases[leaseID]
+	if !exists {
+		return nil, false
+	}
+	cp := *voucher
+	return &cp, true
+}
+
+// ValidateVoucher performs constant-time validation of a lease token key and checks expiration/revocation.
+func (le *LeaseEngine) ValidateVoucher(leaseID, tokenKey string) bool {
+	le.mu.RLock()
+	defer le.mu.RUnlock()
+
+	voucher, exists := le.leases[leaseID]
+	if !exists || voucher.IsRevoked {
+		return false
+	}
+
+	if time.Now().UTC().After(voucher.ExpiresAt) {
+		return false
+	}
+
+	if subtle.ConstantTimeCompare([]byte(voucher.TokenKey), []byte(tokenKey)) != 1 {
+		return false
+	}
+
+	return true
+}
+
+// ApplyVoucher records a replicated lease voucher in the local state.
+func (le *LeaseEngine) ApplyVoucher(voucher LeaseVoucher) {
+	le.mu.Lock()
+	defer le.mu.Unlock()
+	le.leases[voucher.LeaseID] = &voucher
 }
 
 func generateRandomHex(bytesLen int) string {
