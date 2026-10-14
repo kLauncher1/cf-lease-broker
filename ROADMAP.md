@@ -75,9 +75,9 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 ---
 
 ## Release: v0.9.0 (Zero-Trust Mutual TLS & Upstream Verification)
-- [ ] Mutual TLS (mTLS) client certificate verification for upstream edge reverse proxy routes.
-- [ ] Ephemeral CA token generation for inter-broker cluster peering.
-- [ ] Hardware-backed TPM 2.0 key attestation and Windows certificate store integration.
+- [x] Mutual TLS (mTLS) client certificate verification for upstream edge reverse proxy routes.
+- [x] Ephemeral CA token generation for inter-broker cluster peering.
+- [x] Hardware-backed TPM 2.0 key attestation and Windows certificate store integration.
 
 ---
 
@@ -106,3 +106,16 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 - [ ] Multi-master asynchronous KV replication across active broker nodes with vector clock conflict resolution.
 - [ ] CRDT primitives for distributed counter and set synchronization across edge clusters.
 - [ ] Read-your-writes and monotonic-read consistency guarantees for regional tenant workers.
+
+---
+
+## Release: v0.14.0 (Multi-Cluster Gateway Federation & WAN Mesh)
+- [ ] Cross-cloud and multi-datacenter broker federation over secure WAN tunnels.
+- [ ] Dynamic boundary route advertisement with WireGuard overlay mesh.
+- [ ] Global tenant lease routing with localized data sovereignty enforcement.
+
+---
+
+## Release: v0.15.0 (Zero-Knowledge Edge Proof Verifier)
+- [ ] Cryptographic verification of tenant worker isolation and quota attestations without revealing underlying API credentials.
+- [ ] Succinct non-interactive zero-knowledge proofs for trustless edge verification.

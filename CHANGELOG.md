@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-10-14
+
+### Added
+- **Zero-Trust Mutual TLS (mTLS) Client Certificate Verification**: Implemented `internal/mtls/verifier.go` and `internal/mtls/types.go` providing comprehensive X.509 client certificate chain verification, certificate revocation list (CRL) denylist checks, validity window enforcement, wildcard Subject Alternative Name (SAN) matching (`*.domain.com`), and common name / issuer access policies.
+- **Ephemeral Certificate Authority (CA) & Peering Mesh**: Implemented `internal/mtls/ca.go` supporting zero-dependency in-memory ECDSA P-256 root certificate generation, dynamic client certificate issuance with configurable validity windows, CRL serial tracking, and cryptographically signed inter-broker cluster peering tokens.
+- **Hardware-Backed TPM 2.0 Attestation & Windows Certificate Store**: Implemented `internal/mtls/tpm_windows.go` and `internal/mtls/tpm_other.go` leveraging Windows Cryptographic Next Generation (CNG) `ncrypt.dll` to query Microsoft Platform Crypto Provider for hardware TPM 2.0 presence, inspect the Windows system certificate store (`crypt32.dll`), and generate deterministic platform configuration register (PCR) quote measurements.
+- **Mutual TLS HTTP Middleware & Context Injection**: Implemented `internal/mtls/middleware.go` offering `RequireClientCert` and `PeeringAuth` HTTP middlewares with transparent edge proxy header extraction (`X-Client-Cert-Pem`, `X-Forwarded-Client-Cert`, `X-Client-Cert-Der`), request context metadata injection (`ClientCertDetails`), and audit telemetry headers.
+- **mTLS REST API Endpoints**: Implemented `internal/mtls/handler.go` and registered `/api/mtls/*` in `main.go`, exposing `/api/mtls/status`, `/api/mtls/ca/cert` (Root CA PEM export), `/api/mtls/ca/issue`, `/api/mtls/verify`, `/api/mtls/revoke`, `/api/mtls/tpm/attest`, and `/api/mtls/peer-token`.
+- **Interactive mTLS & TPM Security Dashboard Panel**: Enhanced `web/dist/index.html` with an embedded glassmorphism mTLS management console featuring live Root CA telemetry, certificate issuance and verification forms, real-time CRL revocation, one-click Root CA PEM download, and hardware TPM 2.0 attestation diagnostics.
+- **Comprehensive mTLS Unit Test Suite**: Added 13 exhaustive unit tests in `internal/mtls/mtls_test.go` verifying CA initialization, client certificate issuance, serial revocation, ECDSA peering token signing/verification, expired certificate rejection, untrusted root detection, wildcard SAN policy matching, edge header extraction, HTTP middleware enforcement, hardware TPM query, and multi-threaded concurrency.
+
+### Changed
+- Mounted `/api/mtls/` routes on HTTP mux and initialized `EphemeralCA`, `CertVerifier`, and `MTLSHandler` in `main.go`.
+- Added optional `CertVerifier` hook to `ProxyHandler` (`internal/proxy/proxy.go`) allowing edge reverse proxy routes to enforce mTLS verification when `CF_REQUIRE_MTLS=true`.
+- Bumped application version to `0.9.0` across project manifests (`package.json`, `web/package.json`), application entry (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.8.0] - 2026-10-14
 
 ### Added

@@ -16,6 +16,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/cloudflare"
 	"github.com/kLauncher1/cf-lease-broker/internal/compiler"
 	"github.com/kLauncher1/cf-lease-broker/internal/config"
+	"github.com/kLauncher1/cf-lease-broker/internal/mtls"
 	"github.com/kLauncher1/cf-lease-broker/internal/proxy"
 	"github.com/kLauncher1/cf-lease-broker/internal/quota"
 	"github.com/kLauncher1/cf-lease-broker/internal/raft"
@@ -25,7 +26,7 @@ import (
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.8.0"
+	Version = "0.9.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -159,6 +160,34 @@ export default {
 
 	raftHandler := raft.NewRaftHandler(raftNode, raftJournal, raftDiscovery)
 
+	// Zero-Trust Mutual TLS (mTLS) & Ephemeral CA Mesh (Milestone 9)
+	ephemeralCA, err := mtls.NewEphemeralCA("cf-lease-broker-root-ca", 365*24*time.Hour)
+	if err != nil {
+		log.Fatalf("Failed to initialize mTLS Ephemeral CA: %v", err)
+	}
+	mtlsPolicy := mtls.VerificationPolicy{
+		RequireClientCert: false,
+		EnforceExpiry:     true,
+		AllowedSANs:        []string{"*.edge.broker.local", "*.workers.dev", "127.0.0.1"},
+	}
+	certVerifier := mtls.NewCertVerifier(ephemeralCA, mtlsPolicy)
+	mtlsHandler := mtls.NewMTLSHandler(ephemeralCA, certVerifier)
+
+	if os.Getenv("CF_REQUIRE_MTLS") == "true" {
+		proxyHandler.CertVerifier = func(r *http.Request) error {
+			cert, err := certVerifier.ExtractCertFromRequest(r)
+			if err != nil {
+				return err
+			}
+			res := certVerifier.VerifyCertificate(cert)
+			if !res.Valid {
+				return fmt.Errorf("client certificate rejected: %s", res.Reason)
+			}
+			return nil
+		}
+		log.Println("🔒 Zero-Trust mTLS Client Certificate Verification Enforced on Edge Proxy")
+	}
+
 	// Seed encrypted credentials for pooled accounts into vault and poolMgr
 	for _, acc := range activeConfig.Accounts {
 		poolMgr.UpsertAccount(acc.ToAccountStatus())
@@ -232,6 +261,10 @@ export default {
 	// High-Availability Raft Consensus & Distributed State Machine (/raft/*)
 	mux.Handle("/raft/", raftHandler)
 	mux.Handle("/raft", raftHandler)
+
+	// Zero-Trust Mutual TLS (mTLS) & Ephemeral CA Mesh (/api/mtls/*)
+	mux.Handle("/api/mtls/", mtlsHandler)
+	mux.Handle("/api/mtls", mtlsHandler)
 
 	// Authentication & JWT Management Endpoints
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
@@ -331,6 +364,7 @@ export default {
 	fmt.Println(" 🔄 Zero-Downtime Hot Reloading Active (Watcher & SIGHUP)")
 	fmt.Println(" 🚀 Edge Worker Virtual Compiler & Dynamic Route Injection Active")
 	fmt.Println(" 🤝 High-Availability Raft Distributed Cluster Active (/raft/*)")
+	fmt.Println(" 🛡️ Zero-Trust Mutual TLS (mTLS) & Hardware Attestation Active (/api/mtls/*)")
 	fmt.Println(" 💡 Standalone Single Binary with Embedded Zero-Dependency UI")
 	fmt.Println("=================================================================")
 

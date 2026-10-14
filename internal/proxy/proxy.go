@@ -30,6 +30,7 @@ type ProxyHandler struct {
 	leaseEngine      *broker.LeaseEngine
 	httpClient       *http.Client
 	TargetURLBuilder TargetURLBuilderFunc
+	CertVerifier     func(r *http.Request) error
 	MaxRetries       int
 	MaxBodyBytes     int64
 }
@@ -74,6 +75,19 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"example": "/proxy/{service}/sub-path",
 		})
 		return
+	}
+
+	// Validate client mTLS certificate if an upstream policy verifier is attached
+	if p.CertVerifier != nil {
+		if err := p.CertVerifier(r); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":   "mtls_client_verification_failed",
+				"message": err.Error(),
+			})
+			return
+		}
 	}
 
 	// Buffer request body in memory to support transparent retries across accounts
