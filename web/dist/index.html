@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CF-Lease-Broker · Cloudflare Multi-Account Resource Pooling</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #070b14;
+      --bg-surface: #0f172a;
+      --bg-surface-elevated: #1e293b;
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-cf: #f38020;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-cf: #f38020;
+      --accent-green: #10b981;
+      --accent-blue: #38bdf8;
+      --accent-red: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: 'Inter', -apple-system, sans-serif;
+      min-height: 100vh;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border-subtle);
+      margin-bottom: 28px;
+    }
+    .logo-area { display: flex; align-items: center; gap: 12px; }
+    .logo-badge {
+      background: linear-gradient(135deg, #ea580c, #f38020);
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 6px 14px;
+      border-radius: 8px;
+      letter-spacing: 0.5px;
+    }
+    .logo-title { font-size: 20px; font-weight: 700; }
+    .header-meta { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--text-muted); }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--accent-green);
+      box-shadow: 0 0 10px var(--accent-green);
+    }
+    .grid-accounts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .account-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 20px;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .account-card:hover { border-color: rgba(243, 128, 32, 0.4); transform: translateY(-2px); }
+    .acc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .acc-name { font-size: 15px; font-weight: 600; }
+    .acc-plan { font-size: 11px; background: rgba(243, 128, 32, 0.15); color: var(--accent-cf); padding: 2px 8px; border-radius: 999px; }
+    .quota-bar-wrapper { margin: 14px 0; }
+    .quota-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+    .quota-bar-bg { width: 100%; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; }
+    .quota-bar-fill { height: 100%; background: linear-gradient(90deg, #f38020, #fbbf24); border-radius: 3px; }
+    .acc-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .section-title { font-size: 16px; font-weight: 600; }
+    .action-btn {
+      background: linear-gradient(135deg, #ea580c, #f38020);
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+    .action-btn:hover { opacity: 0.9; }
+
+    .leases-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 32px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .leases-table th, .leases-table td {
+      padding: 14px 18px;
+      text-align: left;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .leases-table th {
+      background: var(--bg-surface-elevated);
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+    }
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pill-active { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); }
+    .pill-revoked { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
+    .btn-revoke {
+      background: transparent;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: var(--accent-red);
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn-revoke:hover { background: rgba(239, 68, 68, 0.1); }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="logo-area">
+      <div class="logo-badge">CF-LEASE-BROKER</div>
+      <div class="logo-title">Cloudflare Multi-Account Resource Pooling</div>
+    </div>
+    <div class="header-meta">
+      <span class="pulse-dot"></span>
+      <span id="cf-connectivity">Edge Connectivity: Live</span>
+      <span>•</span>
+      <span id="active-leases-count">Active Leases: Loading...</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="section-header">
+      <span class="section-title">Pooled Cloudflare Accounts</span>
+    </div>
+    <section class="grid-accounts" id="accounts-grid">
+      <!-- Injected by JavaScript -->
+    </section>
+
+    <div class="section-header">
+      <span class="section-title">Transparent Failover Proxy (<code style="font-family: 'JetBrains Mono', monospace; color: var(--accent-cf); font-size: 14px;">/proxy/{service}/*</code>)</span>
+      <span style="font-size: 12px; color: var(--text-muted);">Zero-Downtime Rate-Limit Interception</span>
+    </div>
+
+    <section class="proxy-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-cf);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Dynamic Routing Route</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-main); word-break: break-all;">/proxy/{service}/{subpath}</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Maps to optimal tenant with highest available quota</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-green);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Failover Interception Status</div>
+          <div style="font-size: 13px; font-weight: 600; color: var(--accent-green);" id="proxy-interception-status">Active (429, 502, 503, 504)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Automatic multi-account hop with buffered payload</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-blue);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Last Forwarded Telemetry</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-blue);" id="proxy-telemetry-status">Idle (Awaiting Traffic)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Headers: X-CF-Broker-Account &amp; Attempts</div>
+        </div>
+      </div>
+
+      <!-- Quick Interactive Proxy Tester -->
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px;">
+        <span style="font-size: 12px; font-weight: 600; color: var(--text-muted);">Route Tester:</span>
+        <input type="text" id="proxy-test-service" placeholder="service (e.g. auth-gateway)" value="auth-gateway" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none;">
+        <span style="color: var(--text-muted); font-family: monospace;">/</span>
+        <input type="text" id="proxy-test-path" placeholder="subpath (e.g. v1/health)" value="v1/status" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; flex-grow: 1; min-width: 140px;">
+        <button class="action-btn" onclick="testProxyRoute()" style="padding: 6px 14px; font-size: 12px;">Send Test Request</button>
+      </div>
+      <div id="proxy-test-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle);"></div>
+    </section>
+
+    <!-- Virtual R2 S3-Compatible Gateway & Multi-Account KV -->
+    <div class="section-header">
+      <span class="section-title">Virtual R2 S3 Gateway &amp; Multi-Account KV (<code style="font-family: 'JetBrains Mono', monospace; color: var(--accent-blue); font-size: 14px;">/s3/{bucket}/{key}</code>)</span>
+      <span style="font-size: 12px; color: var(--text-muted);">S3-Compatible Striped Storage &amp; KV Partitioner</span>
+    </div>
+
+    <section class="r2-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-blue);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">S3 Protocol Gateway</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-main); word-break: break-all;">PUT / GET / HEAD / DELETE / LIST</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">AWS S3 SDK &amp; CLI compatible REST endpoint</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-cf);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Multi-Account KV Cache</div>
+          <div style="font-size: 13px; font-weight: 600; color: var(--accent-cf);" id="kv-cache-stats">Hit Rate: 100% (0 keys)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Partitioned manifests &amp; metadata across pool</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-green);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Striped Chunk Engine</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-green);" id="r2-striping-status">Active (2MB Boundary)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Transparent multi-bucket quota striping</div>
+        </div>
+      </div>
+
+      <!-- S3 Gateway Interactive Tester -->
+      <div style="display: flex; flex-direction: column; gap: 12px; background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px;">
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+          <span style="font-size: 12px; font-weight: 600; color: var(--text-muted);">S3 Bucket:</span>
+          <input type="text" id="s3-bucket" placeholder="bucket" value="assets" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; width: 120px;">
+          <span style="color: var(--text-muted); font-family: monospace;">/</span>
+          <input type="text" id="s3-key" placeholder="object key (e.g. docs/specs.txt)" value="docs/specs.txt" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; flex-grow: 1; min-width: 160px;">
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+          <span style="font-size: 12px; font-weight: 600; color: var(--text-muted);">Payload:</span>
+          <input type="text" id="s3-payload" placeholder="Object content bytes..." value="Cloudflare R2 multi-account virtual storage striped across pooled edge tenants." style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; flex-grow: 1;">
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;">
+          <button class="action-btn" onclick="uploadS3Object()" style="padding: 6px 14px; font-size: 12px;">PUT Object (Stripe)</button>
+          <button class="action-btn" onclick="fetchS3Object()" style="padding: 6px 14px; font-size: 12px; background: #0284c7;">GET Object</button>
+          <button class="action-btn" onclick="inspectS3Manifest()" style="padding: 6px 14px; font-size: 12px; background: #475569;">Inspect Manifest</button>
+          <button class="action-btn" onclick="listS3Bucket()" style="padding: 6px 14px; font-size: 12px; background: #334155;">List Bucket (XML)</button>
+        </div>
+      </div>
+      <div id="s3-test-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle);"></div>
+    </section>
+
+    <!-- Production Secrets Vault & JWT Authentication -->
+    <div class="section-header">
+      <span class="section-title">Production Secrets Vault &amp; JWT Auth (<code style="font-family: 'JetBrains Mono', monospace; color: var(--accent-green); font-size: 14px;">/api/security/* &amp; /api/auth/*</code>)</span>
+      <span style="font-size: 12px; color: var(--text-muted);">Windows DPAPI / AES-256-GCM &amp; HS256 RBAC Token Engine</span>
+    </div>
+
+    <section class="security-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-green);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Envelope Encryption Vault</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--text-main);" id="sec-vault-status">DPAPI / AES-256-GCM Active</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Hardware/OS-backed token protection with zeroization</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-cf);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Active Session Role</div>
+          <div style="font-size: 13px; font-weight: 600; color: var(--accent-cf);" id="sec-active-role">Admin (Root Key Injected)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Constant-time timing defense &amp; JTI denylist</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-blue);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Protected Leases API</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-blue);" id="sec-guard-status">Enforced (Bearer Auth)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Administrative grant &amp; revoke endpoints guarded</div>
+        </div>
+      </div>
+
+      <!-- Live Token & Vault Tools -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">
+        <!-- Left: JWT Token Generator & Inspector -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">JWT Token Issuer &amp; Session</div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="sec-token-sub" placeholder="Subject (e.g. gateway-app)" value="console-admin" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; flex-grow: 1;">
+            <select id="sec-token-role" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none;">
+              <option value="admin">Admin</option>
+              <option value="operator">Operator</option>
+              <option value="service">Service</option>
+            </select>
+            <button class="action-btn" onclick="issueSecToken()" style="padding: 6px 12px; font-size: 12px;">Issue Token</button>
+          </div>
+          <input type="text" id="sec-bearer-token" placeholder="Bearer Token (Paste custom or issued token here)" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #38bdf8; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; width: 100%;">
+          <div style="display: flex; gap: 8px;">
+            <button class="action-btn" onclick="applyBearerToken()" style="padding: 5px 10px; font-size: 11px; background: #0284c7;">Apply to Session</button>
+            <button class="action-btn" onclick="resetToDevAdmin()" style="padding: 5px 10px; font-size: 11px; background: #334155;">Reset to Dev Admin</button>
+            <button class="action-btn" onclick="inspectAuthMe()" style="padding: 5px 10px; font-size: 11px; background: #475569;">Inspect /api/auth/me</button>
+          </div>
+        </div>
+
+        <!-- Right: Real-time Vault Envelope Encryptor -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">Live Secret Vault Encryptor</div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="sec-vault-input" placeholder="Secret Key (e.g. cftok_live_alpha_9876)" value="cftok_live_alpha_production_secret" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; flex-grow: 1;">
+            <select id="sec-vault-provider" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none;">
+              <option value="auto">Auto</option>
+              <option value="dpapi">DPAPI</option>
+              <option value="aes-gcm">AES-GCM</option>
+            </select>
+            <button class="action-btn" onclick="encryptVaultSecret()" style="padding: 6px 12px; font-size: 12px; background: #059669;">Encrypt</button>
+          </div>
+          <input type="text" id="sec-vault-envelope" placeholder="Encrypted Envelope (dpapi:... or aes-gcm:...)" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #10b981; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; width: 100%;">
+          <div style="display: flex; gap: 8px;">
+            <button class="action-btn" onclick="decryptVaultEnvelope()" style="padding: 5px 10px; font-size: 11px; background: #0d9488;">Test Decrypt Round-trip</button>
+          </div>
+        </div>
+      </div>
+      <div id="sec-test-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle);"></div>
+    </section>
+
+    <!-- Distributed Quota Synchronization, Automated Probation & Prometheus Exporter -->
+    <div class="section-header">
+      <span class="section-title">Distributed Quota Sync, Probation &amp; Prometheus (<code style="font-family: 'JetBrains Mono', monospace; color: var(--accent-blue); font-size: 14px;">/metrics &amp; /api/quota/*</code>)</span>
+      <span style="font-size: 12px; color: var(--text-muted);">Sliding-Window Limiter · Automated Recovery Probation · Discord/Slack 80/95/100% Webhooks</span>
+    </div>
+
+    <section class="quota-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-blue);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Prometheus Exporter</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-blue);">Text 0.0.4 Active</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Standard <code style="color: #38bdf8;">/metrics</code> scraper endpoint</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-green);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Sliding Window Limiter</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-green);" id="quota-limiter-status">120 req/min (Burst +30)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Sub-bucketed in-memory timestamp sliding window</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-cf);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Probation State Machine</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-cf);" id="quota-probation-summary">All Accounts Healthy</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Exponential backoff with automated cooldown recovery</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid #ec4899;">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Multi-Channel Webhooks</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #ec4899;" id="quota-webhook-status">Discord &amp; Slack Ready</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Threshold debouncing at 80%, 95%, 100%</div>
+        </div>
+      </div>
+
+      <!-- Controls Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">
+        <!-- Left: Probation & Rate Limiting Controls -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">Tenant Probation &amp; Rate-Limit Inspector</div>
+          <div style="display: flex; gap: 8px;">
+            <select id="quota-account-select" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none; flex-grow: 1;">
+              <option value="cf-tenant-alpha">cf-tenant-alpha (Primary)</option>
+              <option value="cf-tenant-bravo">cf-tenant-bravo (Secondary)</option>
+              <option value="cf-tenant-charlie">cf-tenant-charlie (Standby)</option>
+            </select>
+            <button class="action-btn" onclick="triggerProbationTest()" style="padding: 6px 12px; font-size: 12px; background: #ea580c;">Simulate 429</button>
+            <button class="action-btn" onclick="recoverProbationAccount()" style="padding: 6px 12px; font-size: 12px; background: #059669;">Force Recover</button>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="action-btn" onclick="inspectRateLimit()" style="padding: 5px 10px; font-size: 11px; background: #0284c7;">Check Rate Limit Stats</button>
+            <button class="action-btn" onclick="fetchPrometheusMetrics()" style="padding: 5px 10px; font-size: 11px; background: #6366f1;">Scrape /metrics Stream</button>
+          </div>
+        </div>
+
+        <!-- Right: Multi-Channel Webhook Dispatcher -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">Webhook Simulation &amp; Configuration</div>
+          <div style="display: flex; gap: 8px;">
+            <select id="quota-test-level" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none;">
+              <option value="WARNING">80% Threshold (Warning)</option>
+              <option value="CRITICAL">95% Threshold (Critical)</option>
+              <option value="EXHAUSTED">100% Threshold (Exhausted)</option>
+            </select>
+            <select id="quota-test-resource" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none; flex-grow: 1;">
+              <option value="Workers Requests">Workers Requests</option>
+              <option value="R2 Storage (MB)">R2 Storage</option>
+              <option value="KV Read Count">KV Read Operations</option>
+            </select>
+            <button class="action-btn" onclick="dispatchTestWebhook()" style="padding: 6px 12px; font-size: 12px; background: #ec4899;">Dispatch Alert</button>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="quota-discord-input" placeholder="Configure Discord/Slack Webhook URL" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; flex-grow: 1;">
+            <button class="action-btn" onclick="saveWebhookConfig()" style="padding: 5px 10px; font-size: 11px; background: #334155;">Save Config</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="quota-diag-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 200px; overflow-y: auto;"></div>
+    </section>
+
+    <!-- Edge Worker Virtual Compiler, Dynamic Route Injection & Zero-Copy Streaming -->
+    <div class="section-header">
+      <span class="section-title">Edge Worker Compiler &amp; Route Injector (<code style="font-family: 'JetBrains Mono', monospace; color: var(--accent-cf); font-size: 14px;">/api/compiler/*</code>)</span>
+      <span style="font-size: 12px; color: var(--text-muted);">Lexical JS Minifier · Multi-Zone Wildcard Route Compiler · 64KB Zero-Copy Streaming Pipeline</span>
+    </div>
+
+    <section class="compiler-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-cf);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Virtual Lexical Compiler</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-cf);" id="compiler-bundle-count">1 Active Bundle Packaged</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Comment stripping, export detection &amp; Wasm binary verification</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-green);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Dynamic Route Table</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-green);" id="compiler-route-count">2 Injected Routes Active</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Wildcard host (*.domain.com) &amp; path prefix priority matching</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-blue);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Zero-Copy Direct Pipe</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-blue);">64KB sync.Pool Flusher</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Immediate socket flush with client disconnect detection</div>
+        </div>
+      </div>
+
+      <!-- Controls Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+        <!-- Left: Worker Minifier & Deployer -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">Edge Worker Script Minifier &amp; Packager</div>
+          <textarea id="compiler-script-input" rows="6" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #f8fafc; font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 8px; border-radius: 6px; outline: none; width: 100%; resize: vertical;" spellcheck="false">// Cloudflare Edge Worker Microservice
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    // Return fast JSON telemetry response
+    return new Response(JSON.stringify({
+      worker: "tenant-edge-gateway",
+      path: url.pathname,
+      ok: true
+    }), { headers: { "Content-Type": "application/json" } });
+  }
+};</textarea>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="compiler-worker-name" placeholder="Worker Name" value="edge-auth-worker" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 5px 8px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; flex-grow: 1;">
+            <button class="action-btn" onclick="compileAndMinifyScript()" style="padding: 5px 10px; font-size: 11px; background: #ea580c;">Minify Script</button>
+            <button class="action-btn" onclick="deployWorkerBundle()" style="padding: 5px 10px; font-size: 11px; background: #059669;">Package &amp; Deploy</button>
+          </div>
+        </div>
+
+        <!-- Right: Dynamic Route Injector & Match Tester -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">Multi-Zone Dynamic Route Injector</div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="compiler-route-pattern" placeholder="Pattern (e.g. *.tenant.io/api/*)" value="*.service.edge/api/*" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; font-family: monospace; outline: none; flex-grow: 1;">
+            <button class="action-btn" onclick="registerDynamicRoute()" style="padding: 6px 12px; font-size: 12px; background: #0284c7;">Inject Route</button>
+          </div>
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main); margin-top: 4px;">Dynamic Pattern Match Tester</div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="compiler-match-host" placeholder="Test Host (e.g. app.service.edge)" value="api.service.edge" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #38bdf8; padding: 5px 8px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; flex-grow: 1;">
+            <input type="text" id="compiler-match-path" placeholder="Test Path (e.g. /api/users)" value="/api/v1/auth" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #38bdf8; padding: 5px 8px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; flex-grow: 1;">
+            <button class="action-btn" onclick="testRouteMatching()" style="padding: 5px 10px; font-size: 11px; background: #475569;">Test Match</button>
+          </div>
+          <!-- Zero-Copy Stream Benchmark -->
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+            <span style="font-size: 11px; color: var(--text-muted);">Zero-Copy Stream:</span>
+            <select id="compiler-stream-size" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px; outline: none;">
+              <option value="1">1 MB Stream</option>
+              <option value="2" selected>2 MB Stream</option>
+              <option value="5">5 MB Stream</option>
+              <option value="10">10 MB Stream</option>
+            </select>
+            <button class="action-btn" onclick="runStreamBenchmark()" style="padding: 4px 10px; font-size: 11px; background: #6366f1;">Run Stream Benchmark</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="compiler-diag-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 220px; overflow-y: auto;"></div>
+    </section>
+
+    <div class="section-header">
+      <span class="section-title">Active Dynamic Resource Leases</span>
+      <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
+    </div>
+
+    <table class="leases-table">
+      <thead>
+        <tr>
+          <th>Lease ID</th>
+          <th>Target Service</th>
+          <th>Resource Type</th>
+          <th>Allocated Tenant</th>
+          <th>Endpoint URL</th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="leases-body">
+        <tr>
+          <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">
+            Loading active leases...
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+
+  <script>
+    let authToken = localStorage.getItem('cf_auth_token') || 'cf_admin_dev_token_9081';
+
+    function getAuthHeaders(headers = {}) {
+      return {
+        ...headers,
+        'Authorization': `Bearer ${authToken}`
+      };
+    }
+
+    async function fetchAuth(url, options = {}) {
+      options.headers = getAuthHeaders(options.headers);
+      return fetch(url, options);
+    }
+
+    async function loadState() {
+      try {
+        const [accRes, leaseRes, kvStats, secStatus] = await Promise.all([
+          fetch('/api/accounts').then(r => r.json()).catch(() => []),
+          fetchAuth('/api/leases').then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch('/api/kv/stats').then(r => r.json()).catch(() => null),
+          fetch('/api/auth/status').then(r => r.json()).catch(() => null)
+        ]);
+
+        if (secStatus) {
+          const vEl = document.getElementById('sec-vault-status');
+          if (vEl) {
+            vEl.textContent = secStatus.dpapi_supported ? 'DPAPI (Windows Native Active)' : 'AES-256-GCM (Master Key Active)';
+          }
+        }
+
+        if (kvStats) {
+          const kvEl = document.getElementById('kv-cache-stats');
+          if (kvEl) {
+            kvEl.textContent = `Hit Rate: ${kvStats.hit_rate_percent.toFixed(1)}% (${kvStats.total_keys} keys)`;
+          }
+        }
+
+        try {
+          const [workers, routes] = await Promise.all([
+            fetch('/api/compiler/workers').then(r => r.json()).catch(() => []),
+            fetch('/api/compiler/routes').then(r => r.json()).catch(() => [])
+          ]);
+          const wbEl = document.getElementById('compiler-bundle-count');
+          if (wbEl && Array.isArray(workers)) wbEl.textContent = `${workers.length} Active Bundle${workers.length !== 1 ? 's' : ''} Packaged`;
+          const rcEl = document.getElementById('compiler-route-count');
+          if (rcEl && Array.isArray(routes)) rcEl.textContent = `${routes.length} Injected Route${routes.length !== 1 ? 's' : ''} Active`;
+        } catch (_) {}
+
+        // Render accounts
+        const grid = document.getElementById('accounts-grid');
+        grid.innerHTML = accRes.map(acc => {
+          const pct = Math.min(100, (acc.worker_used / acc.worker_limit) * 100);
+          return `
+            <div class="account-card">
+              <div class="acc-header">
+                <span class="acc-name">${acc.alias}</span>
+                <span class="acc-plan">${acc.plan}</span>
+              </div>
+              <div class="quota-bar-wrapper">
+                <div class="quota-label">
+                  <span>Workers Daily Usage</span>
+                  <span>${acc.worker_used.toLocaleString()} / ${acc.worker_limit.toLocaleString()} (${pct.toFixed(1)}%)</span>
+                </div>
+                <div class="quota-bar-bg">
+                  <div class="quota-bar-fill" style="width: ${pct}%"></div>
+                </div>
+              </div>
+              <div class="acc-meta">
+                <span>R2: ${acc.r2_storage_mb} MB</span>
+                <span>KV Reads: ${acc.kv_read_count.toLocaleString()}</span>
+                <span style="color: ${acc.is_healthy ? '#10b981' : (acc.probation_until ? '#f38020' : '#ef4444')}">${acc.is_healthy ? 'HEALTHY' : (acc.probation_until ? 'PROBATION' : 'FAILED')}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        try {
+          const probRes = await (await fetch('/api/quota/probation')).json();
+          const inProbation = probRes.filter(p => p.state === 'PROBATION');
+          if (inProbation.length > 0) {
+            document.getElementById('quota-probation-summary').textContent = `${inProbation.length} In Probation (${inProbation.map(p => p.account_id).join(', ')})`;
+            document.getElementById('quota-probation-summary').style.color = '#f38020';
+          } else {
+            document.getElementById('quota-probation-summary').textContent = 'All Accounts Healthy';
+            document.getElementById('quota-probation-summary').style.color = '#10b981';
+          }
+        } catch (_) {}
+
+        // Render leases
+        const tbody = document.getElementById('leases-body');
+        const activeCount = leaseRes.filter(l => !l.is_revoked).length;
+        document.getElementById('active-leases-count').textContent = `Active Leases: ${activeCount}`;
+
+        if (leaseRes.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 24px;">No active leases issued or token authentication required.</td></tr>`;
+        } else {
+          tbody.innerHTML = leaseRes.map(l => `
+            <tr>
+              <td style="font-family: monospace; font-weight: 600; color: #f38020;">${l.lease_id}</td>
+              <td style="font-weight: 600;">${l.target_service}</td>
+              <td><span class="pill pill-active">${l.resource_type}</span></td>
+              <td style="font-family: monospace; color: #94a3b8;">${l.account_id}</td>
+              <td style="font-family: monospace; font-size: 11px; color: #38bdf8;">${l.endpoint_url}</td>
+              <td><span class="pill ${l.is_revoked ? 'pill-revoked' : 'pill-active'}">${l.is_revoked ? 'REVOKED' : 'ACTIVE'}</span></td>
+              <td>
+                ${!l.is_revoked ? `<button class="btn-revoke" onclick="revokeLease('${l.lease_id}')">Revoke</button>` : '-'}
+              </td>
+            </tr>
+          `).join('');
+        }
+      } catch (err) {
+        console.error('Failed to load state:', err);
+      }
+    }
+
+    async function issueQuickLease() {
+      const serviceName = prompt('Enter target microservice name (e.g. auth-gateway, media-api):', 'auth-gateway-' + Math.floor(Math.random() * 900 + 100));
+      if (!serviceName) return;
+
+      const res = await fetchAuth('/api/leases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_service: serviceName, resource_type: 'Workers', duration_hours: 24 })
+      });
+      if (!res.ok) {
+        alert('Failed to issue lease: ' + res.status + ' ' + res.statusText);
+      }
+      loadState();
+    }
+
+    async function revokeLease(leaseId) {
+      if (!confirm(`Are you sure you want to revoke lease ${leaseId}?`)) return;
+      const res = await fetchAuth(`/api/leases/revoke?id=${leaseId}`, { method: 'POST' });
+      if (!res.ok) {
+        alert('Failed to revoke lease: ' + res.status + ' ' + res.statusText);
+      }
+      loadState();
+    }
+
+    async function testProxyRoute() {
+      const service = document.getElementById('proxy-test-service').value.trim();
+      const subpath = document.getElementById('proxy-test-path').value.trim();
+      const resBox = document.getElementById('proxy-test-result');
+      const telemBox = document.getElementById('proxy-telemetry-status');
+
+      if (!service) {
+        alert('Please specify a service name');
+        return;
+      }
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Dispatching test request through /proxy/${service}/${subpath}...`;
+
+      try {
+        const start = performance.now();
+        const res = await fetch(`/proxy/${service}/${subpath}`);
+        const elapsed = Math.round(performance.now() - start);
+
+        const brokerAccount = res.headers.get('X-CF-Broker-Account') || 'none';
+        const brokerAttempts = res.headers.get('X-CF-Broker-Attempts') || '1';
+
+        telemBox.textContent = `${brokerAccount} (${brokerAttempts} attempt${brokerAttempts > 1 ? 's' : ''})`;
+
+        let bodyText = await res.text();
+        try {
+          bodyText = JSON.stringify(JSON.parse(bodyText), null, 2);
+        } catch (_) {}
+
+        resBox.innerHTML = `
+          <div style="color: ${res.ok ? '#10b981' : '#ef4444'}; font-weight: 600; margin-bottom: 6px;">
+            HTTP ${res.status} ${res.statusText} (${elapsed}ms)
+          </div>
+          <div><strong>X-CF-Broker-Account:</strong> ${brokerAccount}</div>
+          <div><strong>X-CF-Broker-Attempts:</strong> ${brokerAttempts}</div>
+          <pre style="margin-top: 8px; color: #f8fafc; white-space: pre-wrap; max-height: 150px; overflow-y: auto;">${bodyText}</pre>
+        `;
+        loadState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Network / Dispatch Error: ${err.message}</span>`;
+      }
+    }
+
+    async function uploadS3Object() {
+      const bucket = document.getElementById('s3-bucket').value.trim();
+      const key = document.getElementById('s3-key').value.trim();
+      const payload = document.getElementById('s3-payload').value;
+      const resBox = document.getElementById('s3-test-result');
+
+      if (!bucket || !key) {
+        alert('Please specify bucket and object key');
+        return;
+      }
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Uploading object to /s3/${bucket}/${key} (Striping across pooled R2 buckets)...`;
+
+      try {
+        const start = performance.now();
+        const res = await fetch(`/s3/${bucket}/${key}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'text/plain' },
+          body: payload
+        });
+        const elapsed = Math.round(performance.now() - start);
+
+        const etag = res.headers.get('ETag') || 'none';
+        const chunks = res.headers.get('x-amz-meta-striped-chunks') || '1';
+        const accounts = res.headers.get('x-amz-meta-accounts') || 'pool';
+
+        resBox.innerHTML = `
+          <div style="color: ${res.ok ? '#10b981' : '#ef4444'}; font-weight: 600; margin-bottom: 6px;">
+            PUT /s3/${bucket}/${key} ➔ HTTP ${res.status} ${res.statusText} (${elapsed}ms)
+          </div>
+          <div><strong>ETag:</strong> ${etag}</div>
+          <div><strong>Striped Chunks:</strong> ${chunks}</div>
+          <div><strong>Tenant Accounts:</strong> ${accounts}</div>
+        `;
+        loadState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Upload Error: ${err.message}</span>`;
+      }
+    }
+
+    async function fetchS3Object() {
+      const bucket = document.getElementById('s3-bucket').value.trim();
+      const key = document.getElementById('s3-key').value.trim();
+      const resBox = document.getElementById('s3-test-result');
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Fetching object from /s3/${bucket}/${key}...`;
+
+      try {
+        const start = performance.now();
+        const res = await fetch(`/s3/${bucket}/${key}`);
+        const elapsed = Math.round(performance.now() - start);
+
+        const etag = res.headers.get('ETag') || 'none';
+        const chunks = res.headers.get('x-amz-meta-striped-chunks') || '1';
+        const bodyText = await res.text();
+
+        resBox.innerHTML = `
+          <div style="color: ${res.ok ? '#10b981' : '#ef4444'}; font-weight: 600; margin-bottom: 6px;">
+            GET /s3/${bucket}/${key} ➔ HTTP ${res.status} ${res.statusText} (${elapsed}ms)
+          </div>
+          <div><strong>ETag:</strong> ${etag} | <strong>Chunks Reassembled:</strong> ${chunks}</div>
+          <pre style="margin-top: 8px; color: #f8fafc; white-space: pre-wrap; max-height: 150px; overflow-y: auto;">${bodyText}</pre>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Fetch Error: ${err.message}</span>`;
+      }
+    }
+
+    async function inspectS3Manifest() {
+      const bucket = document.getElementById('s3-bucket').value.trim();
+      const key = document.getElementById('s3-key').value.trim();
+      const resBox = document.getElementById('s3-test-result');
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Inspecting manifest for /s3/${bucket}/${key}...`;
+
+      try {
+        const res = await fetch(`/s3/inspect/${bucket}/${key}`);
+        const data = await res.json();
+        resBox.innerHTML = `
+          <div style="color: #38bdf8; font-weight: 600; margin-bottom: 6px;">
+            R2 Striped Manifest: ${bucket}/${key}
+          </div>
+          <pre style="margin-top: 8px; color: #f8fafc; white-space: pre-wrap; max-height: 200px; overflow-y: auto;">${JSON.stringify(data, null, 2)}</pre>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Inspect Error: ${err.message}</span>`;
+      }
+    }
+
+    async function listS3Bucket() {
+      const bucket = document.getElementById('s3-bucket').value.trim();
+      const resBox = document.getElementById('s3-test-result');
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Listing objects in bucket /s3/${bucket}...`;
+
+      try {
+        const res = await fetch(`/s3/${bucket}`);
+        const text = await res.text();
+        resBox.innerHTML = `
+          <div style="color: #10b981; font-weight: 600; margin-bottom: 6px;">
+            ListBucketResult XML (/s3/${bucket})
+          </div>
+          <pre style="margin-top: 8px; color: #f8fafc; white-space: pre-wrap; max-height: 200px; overflow-y: auto;">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">List Error: ${err.message}</span>`;
+      }
+    }
+
+    async function issueSecToken() {
+      const sub = document.getElementById('sec-token-sub').value.trim() || 'console-admin';
+      const role = document.getElementById('sec-token-role').value;
+      const resBox = document.getElementById('sec-test-result');
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Requesting HS256 JWT Token for sub="${sub}", role="${role}"...`;
+
+      try {
+        const res = await fetch('/api/auth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sub, role, duration_hours: 24, admin_key: authToken })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('sec-bearer-token').value = data.token;
+          resBox.innerHTML = `
+            <div style="color: #10b981; font-weight: 600; margin-bottom: 6px;">HS256 JWT Token Issued Successfully (24h TTL)</div>
+            <pre style="margin-top: 6px; color: #f8fafc; white-space: pre-wrap; max-height: 150px; overflow-y: auto;">${JSON.stringify(data.claims, null, 2)}</pre>
+          `;
+        } else {
+          resBox.innerHTML = `<span style="color: #ef4444;">Token Issue Failed: ${data.error || res.statusText}</span>`;
+        }
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function applyBearerToken() {
+      const val = document.getElementById('sec-bearer-token').value.trim();
+      if (!val) {
+        alert('Please paste or issue a bearer token first');
+        return;
+      }
+      authToken = val;
+      localStorage.setItem('cf_auth_token', val);
+      await inspectAuthMe();
+      loadState();
+    }
+
+    async function resetToDevAdmin() {
+      authToken = 'cf_admin_dev_token_9081';
+      localStorage.removeItem('cf_auth_token');
+      document.getElementById('sec-bearer-token').value = authToken;
+      document.getElementById('sec-active-role').textContent = 'Admin (Root Key Injected)';
+      const resBox = document.getElementById('sec-test-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = `<span style="color: #38bdf8;">Session reset to default Admin Root Token (cf_admin_dev_token_9081)</span>`;
+      loadState();
+    }
+
+    async function inspectAuthMe() {
+      const resBox = document.getElementById('sec-test-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Verifying active token against /api/auth/me...`;
+
+      try {
+        const res = await fetchAuth('/api/auth/me');
+        const data = await res.json();
+        if (res.ok && data.authenticated) {
+          document.getElementById('sec-active-role').textContent = `${data.claims.role.toUpperCase()} (${data.claims.sub})`;
+          resBox.innerHTML = `
+            <div style="color: #10b981; font-weight: 600; margin-bottom: 6px;">Active Identity Verified</div>
+            <pre style="margin-top: 6px; color: #f8fafc; white-space: pre-wrap; max-height: 150px; overflow-y: auto;">${JSON.stringify(data.claims, null, 2)}</pre>
+          `;
+        } else {
+          document.getElementById('sec-active-role').textContent = 'Unauthenticated / Invalid';
+          resBox.innerHTML = `<span style="color: #ef4444;">Auth Check Failed: ${data.error || 'Invalid Token'}</span>`;
+        }
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function encryptVaultSecret() {
+      const secret = document.getElementById('sec-vault-input').value;
+      const provider = document.getElementById('sec-vault-provider').value;
+      const resBox = document.getElementById('sec-test-result');
+
+      if (!secret) {
+        alert('Please enter a secret key');
+        return;
+      }
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Encrypting secret with provider "${provider}"...`;
+
+      try {
+        const res = await fetchAuth('/api/security/encrypt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ secret, provider })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('sec-vault-envelope').value = data.envelope;
+          resBox.innerHTML = `
+            <div style="color: #10b981; font-weight: 600; margin-bottom: 6px;">Vault Envelope Generated</div>
+            <div><strong>Envelope:</strong> <code style="color: #38bdf8;">${data.envelope}</code></div>
+          `;
+        } else {
+          resBox.innerHTML = `<span style="color: #ef4444;">Encryption Failed: ${data.error || res.statusText}</span>`;
+        }
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function decryptVaultEnvelope() {
+      const envelope = document.getElementById('sec-vault-envelope').value.trim();
+      const resBox = document.getElementById('sec-test-result');
+
+      if (!envelope) {
+        alert('Please generate or provide an encrypted envelope first');
+        return;
+      }
+
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Decrypting envelope round-trip...`;
+
+      try {
+        const res = await fetchAuth('/api/security/decrypt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ envelope })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          resBox.innerHTML = `
+            <div style="color: #10b981; font-weight: 600; margin-bottom: 6px;">Round-trip Decryption Successful</div>
+            <div><strong>Recovered Secret:</strong> <code style="color: #f38020;">${data.secret}</code></div>
+          `;
+        } else {
+          resBox.innerHTML = `<span style="color: #ef4444;">Decryption Failed: ${data.error || res.statusText}</span>`;
+        }
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function triggerProbationTest() {
+      const id = document.getElementById('quota-account-select').value;
+      const resBox = document.getElementById('quota-diag-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Triggering 429 rate limit probation on ${id}...`;
+
+      try {
+        const res = await fetch(`/api/quota/probation/trigger?id=${encodeURIComponent(id)}`, { method: 'POST' });
+        const data = await res.json();
+        resBox.innerHTML = `
+          <div style="color: #f38020; font-weight: 600; margin-bottom: 4px;">Probation Intercepted</div>
+          <div>Account <strong>${data.account_id}</strong> entered probation for <strong>${data.probation_duration}</strong></div>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Reason: ${data.reason}</div>
+        `;
+        loadState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function recoverProbationAccount() {
+      const id = document.getElementById('quota-account-select').value;
+      const resBox = document.getElementById('quota-diag-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Restoring account ${id}...`;
+
+      try {
+        const res = await fetch(`/api/quota/probation/recover?id=${encodeURIComponent(id)}`, { method: 'POST' });
+        const data = await res.json();
+        resBox.innerHTML = `
+          <div style="color: #10b981; font-weight: 600; margin-bottom: 4px;">Account Restored</div>
+          <div>Account <strong>${data.account_id}</strong> returned to active pool rotation</div>
+        `;
+        loadState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function inspectRateLimit() {
+      const resBox = document.getElementById('quota-diag-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = 'Querying sliding window limiter stats...';
+
+      try {
+        const res = await fetch('/api/quota/ratelimit?key=global');
+        const data = await res.json();
+        resBox.innerHTML = `
+          <div style="color: #38bdf8; font-weight: 600; margin-bottom: 4px;">Sliding Window Telemetry</div>
+          <div>Current Requests in Window: <strong>${data.current_count} / ${data.limit}</strong> (Burst Remaining: ${data.burst_remaining})</div>
+          <div>Window Duration: <strong>${Math.round(data.window / 1e9)}s</strong></div>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function fetchPrometheusMetrics() {
+      const resBox = document.getElementById('quota-diag-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = 'Scraping /metrics standard Prometheus exposition stream...';
+
+      try {
+        const res = await fetch('/metrics');
+        const text = await res.text();
+        resBox.innerHTML = `
+          <div style="color: #6366f1; font-weight: 600; margin-bottom: 6px;">Prometheus Exposition Output (/metrics)</div>
+          <pre style="color: #f8fafc; font-family: monospace; font-size: 11px; white-space: pre-wrap;">${text}</pre>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function dispatchTestWebhook() {
+      const id = document.getElementById('quota-account-select').value;
+      const level = document.getElementById('quota-test-level').value;
+      const resource = document.getElementById('quota-test-resource').value;
+      const resBox = document.getElementById('quota-diag-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Dispatching test ${level} alert for ${resource}...`;
+
+      try {
+        const res = await fetch('/api/quota/webhooks/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            account_id: id,
+            resource: resource,
+            level: level,
+            percent: level === 'EXHAUSTED' ? 100 : (level === 'CRITICAL' ? 95 : 82.5)
+          })
+        });
+        const data = await res.json();
+        resBox.innerHTML = `
+          <div style="color: #ec4899; font-weight: 600; margin-bottom: 4px;">Webhook Test Dispatched</div>
+          <div>Delivered Alert: <strong>${data.alert.message}</strong></div>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">Delivered to: ${(data.alert.delivered_to || []).join(', ') || 'In-Memory Audit Log (Set webhook URL to forward)'}</div>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function saveWebhookConfig() {
+      const url = document.getElementById('quota-discord-input').value.trim();
+      if (!url) {
+        alert('Please enter a webhook URL');
+        return;
+      }
+      const resBox = document.getElementById('quota-diag-result');
+      resBox.style.display = 'block';
+
+      try {
+        const payload = url.includes('slack') ? { slack_url: url } : { discord_url: url };
+        const res = await fetch('/api/quota/webhooks/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        resBox.innerHTML = `
+          <div style="color: #10b981; font-weight: 600;">Webhook Configuration Updated</div>
+          <div>Discord: <code>${data.config.discord_url || '(none)'}</code></div>
+          <div>Slack: <code>${data.config.slack_url || '(none)'}</code></div>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function compileAndMinifyScript() {
+      const script = document.getElementById('compiler-script-input').value;
+      const resBox = document.getElementById('compiler-diag-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = 'Compiling and lexically minifying script...';
+
+      try {
+        const res = await fetch('/api/compiler/compile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ script: script, minify: true })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          resBox.innerHTML = `<span style="color: #ef4444;">Minify Error: ${data.error || res.statusText}</span>`;
+          return;
+        }
+
+        resBox.innerHTML = `
+          <div style="color: #10b981; font-weight: 600; margin-bottom: 6px;">Minification Complete · ${data.savings_percent} Size Reduction</div>
+          <div style="display: flex; gap: 16px; margin-bottom: 8px; font-size: 11px;">
+            <span>Original: <strong>${data.original_bytes} bytes</strong></span>
+            <span>Minified: <strong>${data.minified_bytes} bytes</strong></span>
+            <span>Export Detected: <strong>${data.has_valid_export ? 'YES (Valid Edge Worker)' : 'NO'}</strong></span>
+          </div>
+          <pre style="color: #f8fafc; font-family: monospace; font-size: 11px; white-space: pre-wrap; max-height: 120px; overflow-y: auto;">${data.minified_script}</pre>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function deployWorkerBundle() {
+      const script = document.getElementById('compiler-script-input').value;
+      const name = document.getElementById('compiler-worker-name').value.trim() || 'worker-custom';
+      const resBox = document.getElementById('compiler-diag-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Packaging and deploying bundle "${name}"...`;
+
+      try {
+        const res = await fetch('/api/compiler/workers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenant_id: 'cf-tenant-alpha',
+            name: name,
+            script: script,
+            minify: true,
+            compatibility_date: '2024-04-01',
+            memory_limit_mb: 128
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          resBox.innerHTML = `<span style="color: #ef4444;">Deploy Error: ${data.error || res.statusText}</span>`;
+          return;
+        }
+
+        resBox.innerHTML = `
+          <div style="color: #10b981; font-weight: 600; margin-bottom: 4px;">Worker Bundle Deployed Successfully</div>
+          <div>Bundle ID: <code style="color: #38bdf8;">${data.id}</code></div>
+          <div>Tenant: <code>${data.tenant_id}</code> · Name: <strong>${data.name}</strong></div>
+          <div>Content SHA-256: <code style="color: #f38020;">${data.content_hash}</code></div>
+          <div style="margin-top: 4px; font-size: 11px; color: #94a3b8;">Original: ${data.original_bytes}B -> Minified: ${data.minified_bytes}B (${((1 - data.minified_bytes/data.original_bytes)*100).toFixed(1)}% savings)</div>
+        `;
+        loadState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function registerDynamicRoute() {
+      const pattern = document.getElementById('compiler-route-pattern').value.trim();
+      const resBox = document.getElementById('compiler-diag-result');
+      if (!pattern) {
+        alert('Please enter a route pattern');
+        return;
+      }
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Compiling and registering route pattern "${pattern}"...`;
+
+      try {
+        const res = await fetch('/api/compiler/routes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pattern: pattern,
+            zone_id: 'zone-default',
+            tenant_id: 'cf-tenant-alpha',
+            worker_id: 'gateway-worker'
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          resBox.innerHTML = `<span style="color: #ef4444;">Route Error: ${data.error || res.statusText}</span>`;
+          return;
+        }
+
+        resBox.innerHTML = `
+          <div style="color: #0284c7; font-weight: 600; margin-bottom: 4px;">Dynamic Route Registered</div>
+          <div>Route ID: <code style="color: #38bdf8;">${data.id}</code></div>
+          <div>Pattern: <strong>${data.pattern}</strong> (Host: <code>${data.host_part}</code>, Path: <code>${data.path_part}</code>)</div>
+          <div>Priority Weight: <strong>${data.priority}</strong> · Target Worker: <code>${data.worker_id}</code></div>
+        `;
+        loadState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function testRouteMatching() {
+      const host = document.getElementById('compiler-match-host').value.trim();
+      const path = document.getElementById('compiler-match-path').value.trim();
+      const resBox = document.getElementById('compiler-diag-result');
+      if (!host || !path) {
+        alert('Please specify both host and path to test');
+        return;
+      }
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Evaluating URL matching for ${host}${path}...`;
+
+      try {
+        const res = await fetch('/api/compiler/routes/match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ host: host, path: path })
+        });
+        const data = await res.json();
+        if (!data.matched) {
+          resBox.innerHTML = `<div style="color: #f38020; font-weight: 600;">No route matched for ${host}${path}</div>`;
+          return;
+        }
+
+        resBox.innerHTML = `
+          <div style="color: #10b981; font-weight: 600; margin-bottom: 4px;">Match Found! (Priority: ${data.route.priority})</div>
+          <div>Matched Pattern: <code style="color: #f38020;">${data.route.pattern}</code></div>
+          <div>Target Worker: <strong style="color: #38bdf8;">${data.route.worker_id}</strong> (Tenant: ${data.route.tenant_id})</div>
+          <div>Route ID: <code>${data.route.id}</code> · Zone: ${data.route.zone_id}</div>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${err.message}</span>`;
+      }
+    }
+
+    async function runStreamBenchmark() {
+      const sizeMB = document.getElementById('compiler-stream-size').value;
+      const resBox = document.getElementById('compiler-diag-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Initiating ${sizeMB}MB zero-copy direct response stream...`;
+
+      try {
+        const start = performance.now();
+        const res = await fetch(`/api/compiler/stream-test?size_mb=${sizeMB}`);
+        if (!res.ok) {
+          resBox.innerHTML = `<span style="color: #ef4444;">Stream failed: ${res.statusText}</span>`;
+          return;
+        }
+
+        const reader = res.body.getReader();
+        let receivedBytes = 0;
+        let chunks = 0;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          receivedBytes += value.length;
+          chunks++;
+          if (chunks % 10 === 0) {
+            resBox.innerHTML = `Streaming in progress... Received ${(receivedBytes / (1024 * 1024)).toFixed(2)} MB (${chunks} chunks)`;
+          }
+        }
+
+        const elapsedMs = Math.round(performance.now() - start);
+        const sec = elapsedMs / 1000;
+        const throughput = sec > 0 ? ((receivedBytes / (1024 * 1024)) / sec).toFixed(2) : '0';
+
+        resBox.innerHTML = `
+          <div style="color: #6366f1; font-weight: 600; margin-bottom: 4px;">Zero-Copy Stream Benchmark Completed</div>
+          <div>Transferred: <strong>${(receivedBytes / (1024 * 1024)).toFixed(2)} MB</strong> (${chunks} chunks, 64KB sync.Pool buffer)</div>
+          <div>Duration: <strong>${elapsedMs}ms</strong></div>
+          <div>Effective Throughput: <strong style="color: #10b981; font-size: 13px;">${throughput} MB/s</strong></div>
+          <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">X-Accel-Buffering: no · HTTP Chunked Transfer Encoding</div>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Stream Error: ${err.message}</span>`;
+      }
+    }
+
+    loadState();
+    setInterval(loadState, 2000);
+  </script>
+</body>
+</html>
