@@ -20,14 +20,53 @@ jobs:
           go-version: '1.22'
           check-latest: true
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Verify Go dependencies
         run: go mod verify
 
       - name: Run Go Vet
         run: go vet ./...
 
-      - name: Run Unit Tests
+      - name: Run Unit Tests with Race Detector
         run: go test -v -race ./...
 
-      - name: Build Binary
-        run: go build -v -o cf-lease-broker .
+      - name: Run Universal Verification Pipeline
+        run: node scripts/check.mjs
+
+  multi-arch-matrix:
+    name: Multi-Arch Cross-Compilation Matrix
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - os: linux
+            arch: amd64
+          - os: linux
+            arch: arm64
+          - os: darwin
+            arch: arm64
+          - os: windows
+            arch: amd64
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          check-latest: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cross-Compile Standalone Target (${{ matrix.target.os }}/${{ matrix.target.arch }})
+        run: node scripts/build_artifacts.mjs --target=${{ matrix.target.os }}/${{ matrix.target.arch }} --skip-checksums

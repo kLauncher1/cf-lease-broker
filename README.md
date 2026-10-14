@@ -18,6 +18,8 @@
 
 ## ⚡ Highlights
 
+- **Multi-Architecture Standalone Artifacts**: Cross-compilation pipeline packaging stripped standalone executables for `linux/amd64`, `linux/arm64`, `darwin/arm64`, and `windows/amd64` with automated SHA-256 integrity checksum generation (`scripts/build_artifacts.mjs`).
+- **Zero-Downtime Hot Reloading**: Dynamic configuration and credentials reloading via file modification watching and OS signals (`SIGHUP` on POSIX) that synchronizes pooled tenants and the secrets vault without process restarts.
 - **Multi-Account Quota Aggregation**: Pools multiple free/pro Cloudflare accounts into a unified virtual compute cluster, overcoming single-account daily request boundaries.
 - **Production Secrets Vault**: Envelope encryption at rest using Windows DPAPI (`CryptProtectData`) and cross-platform AES-256-GCM with memory zeroization (`Zeroize`).
 - **HS256 JWT Authentication & RBAC**: Microservice and administrative authentication engine with HMAC-SHA256 tokens, constant-time verification, and thread-safe JTI revocation denylists.
@@ -50,11 +52,14 @@ go run .
 The management console will be live at:
 👉 **`http://localhost:9081`**
 
-### 2. Build Single Binary
+### 2. Cross-Compile Standalone Multi-Architecture Artifacts
 
 ```bash
-go build -ldflags="-s -w" -o cf-lease-broker .
-./cf-lease-broker
+# Build standalone binaries for linux/amd64, linux/arm64, darwin/arm64, windows/amd64
+node scripts/build_artifacts.mjs --clean
+
+# Verify cryptographic SHA-256 checksums
+node scripts/build_artifacts.mjs --verify
 ```
 
 ---
@@ -70,17 +75,18 @@ go build -ldflags="-s -w" -o cf-lease-broker .
 │  • Account Pool   │  • Reverse Proxy  │ • Virtual S3 Gateway (/s3/...) │
 │  • Dynamic Leases │  • 429 Failover   │ • 2MB Striped Chunker          │
 │  • Quota Balancer │  • Payload Buffer │ • Partitioned KV Cache Layer   │
-├───────────────────┼───────────────────┴────────────────────────────────┤
-│  internal/quota   │               internal/security                    │
-│  • Prometheus     │ • Windows DPAPI Bindings • AES-256-GCM Vault       │
-│  • Sliding-Window │ • HS256 JWT Token Engine • RBAC Auth Middleware    │
-│  • Auto-Probation │ • JTI Denylist           • Buffer Zeroization      │
-│  • Webhook Alerts │                                                    │
-├───────────────────┴────────────────────────────────────────────────────┤
+├───────────────────┼───────────────────┼────────────────────────────────┤
+│  internal/quota   │ internal/security │        internal/config         │
+│  • Prometheus     │ • Windows DPAPI   │ • Zero-Downtime Hot Reload     │
+│  • Sliding-Window │ • AES-256-GCM     │ • File Watcher & SIGHUP Sync   │
+│  • Auto-Probation │ • HS256 JWT / RBAC│ • Dynamic Credential Injection │
+│  • Webhook Alerts │ • Zeroize Memory  │ • Token Redaction Engine       │
+├───────────────────┴───────────────────┴────────────────────────────────┤
 │                         net/http HTTP Engine                           │
 │   • /metrics         • /api/quota/*   • /s3/{bkt}/{key}                │
 │   • /proxy/{svc}/*   • /api/accounts  • /api/leases (Auth Guarded)     │
-│   • /api/auth/*      • /api/security  • /api/health                    │
+│   • /api/auth/*      • /api/security  • /api/config/* (Auth Guarded)   │
+│   • /api/health                                                        │
 ├────────────────────────────────────────────────────────────────────────┤
 │                         Embedded Web Dashboard                         │
 │                   (Glassmorphism UI via //go:embed)                    │
@@ -164,11 +170,49 @@ The broker provides a transparent edge reverse proxy at `/proxy/{service}/*`. Ca
 
 ---
 
+## 🔄 Zero-Downtime Hot Reloading (`internal/config/`)
+
+`cf-lease-broker` supports dynamic credential rotation and account pool updates without restarting the binary or dropping active HTTP connections:
+
+### Hot Reload Mechanics:
+1. **File Watcher Loop**: Periodically polls the configuration file (`CF_BROKER_CONFIG_PATH` or `config.json`) and evaluates content changes via SHA-256 deterministic digests to avoid spurious reloads.
+2. **POSIX Signal Handling**: Catches `SIGHUP` (Unix/Linux/macOS) to trigger immediate synchronous configuration validation and reloads.
+3. **Atomic State Swap & Fallback Safety**: If a reloaded file contains invalid JSON, negative limits, or duplicate tenant IDs, the reload fails safely with an error log while preserving the active configuration untouched.
+4. **Credential & Pool Sync**: Successfully reloaded tenants are synchronized directly with `PoolManager` (`SyncAccounts`) and encrypted into `SecretVault` (`StoreCredential`).
+
+### Configuration File Format (`config.json`):
+```json
+{
+  "server_port": "9081",
+  "version": "0.6.0",
+  "accounts": [
+    {
+      "id": "cf-tenant-alpha",
+      "alias": "Edge Cluster Primary",
+      "plan": "Free Tier (100k/day)",
+      "worker_limit": 100000,
+      "api_token": "cftok_prod_alpha_secret"
+    },
+    {
+      "id": "cf-tenant-bravo",
+      "alias": "Edge Cluster Secondary",
+      "plan": "Free Tier (100k/day)",
+      "worker_limit": 100000,
+      "api_token": "cftok_prod_bravo_secret"
+    }
+  ]
+}
+```
+
+---
+
 ## 📡 REST API Reference
 
 | Endpoint | Method | Auth | Description |
 | :--- | :---: | :---: | :--- |
 | `/metrics` | `GET` | Public | Standard Prometheus 0.0.4 text format metrics scraper |
+| `/api/config/status` | `GET` | **Bearer** | Hot-reload telemetry stats and sanitized accounts list (redacted tokens) |
+| `/api/config/reload` | `POST` | **Bearer** | Triggers immediate zero-downtime hot reload of configuration from disk |
 | `/api/quota/alerts` | `GET` | Public | Logged quota threshold notifications history |
 | `/api/quota/webhooks/config` | `GET/POST` | Public | Inspect or update Discord/Slack webhook URLs |
 | `/api/quota/webhooks/test` | `POST` | Public | Dispatches test quota threshold notification (80%/95%/100%) |
