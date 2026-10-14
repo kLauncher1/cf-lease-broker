@@ -4,10 +4,12 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/kLauncher1/cf-lease-broker/internal/broker"
@@ -16,13 +18,14 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/config"
 	"github.com/kLauncher1/cf-lease-broker/internal/proxy"
 	"github.com/kLauncher1/cf-lease-broker/internal/quota"
+	"github.com/kLauncher1/cf-lease-broker/internal/raft"
 	"github.com/kLauncher1/cf-lease-broker/internal/security"
 	"github.com/kLauncher1/cf-lease-broker/internal/storage"
 )
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.7.0"
+	Version = "0.8.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -118,6 +121,44 @@ export default {
 	jwtMgr := security.NewJWTManager(jwtSecret)
 	authMgr := security.NewAuthManager(jwtMgr, vault)
 
+	// High-Availability Raft Consensus Engine (Milestone 8)
+	raftNodeID := os.Getenv("CF_RAFT_NODE_ID")
+	if raftNodeID == "" {
+		raftNodeID = "broker-node-" + port
+	}
+	raftDiscoveryDomain := os.Getenv("CF_RAFT_DISCOVERY_DOMAIN")
+	raftDataDir := os.Getenv("CF_RAFT_DATA_DIR")
+	peerMap := make(map[string]string)
+	if peersRaw := os.Getenv("CF_RAFT_PEERS"); peersRaw != "" {
+		for _, p := range strings.Split(peersRaw, ",") {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if parts := strings.SplitN(p, "=", 2); len(parts) == 2 {
+				peerMap[parts[0]] = parts[1]
+			} else {
+				peerMap[p] = p
+			}
+		}
+	}
+
+	raftJournal, err := raft.NewJournal(raftDataDir)
+	if err != nil {
+		log.Printf("[Raft] Warning: fallback to in-memory journal: %v", err)
+		raftJournal, _ = raft.NewJournal("")
+	}
+	raftDiscovery := raft.NewPeerDiscovery(raftNodeID, raftDiscoveryDomain, peerMap)
+	brokerFSM := raft.NewBrokerFSM(poolMgr, leaseEng)
+	raftCfg := raft.DefaultNodeConfig(raftNodeID)
+	raftCfg.DataDir = raftDataDir
+	raftCfg.DiscoveryDomain = raftDiscoveryDomain
+	raftNode := raft.NewRaftNode(raftCfg, raftJournal, raftDiscovery, brokerFSM)
+	raftNode.Start()
+	defer raftNode.Stop()
+
+	raftHandler := raft.NewRaftHandler(raftNode, raftJournal, raftDiscovery)
+
 	// Seed encrypted credentials for pooled accounts into vault and poolMgr
 	for _, acc := range activeConfig.Accounts {
 		poolMgr.UpsertAccount(acc.ToAccountStatus())
@@ -188,6 +229,10 @@ export default {
 	mux.Handle("/api/compiler/", compilerHandler)
 	mux.Handle("/api/compiler", compilerHandler)
 
+	// High-Availability Raft Consensus & Distributed State Machine (/raft/*)
+	mux.Handle("/raft/", raftHandler)
+	mux.Handle("/raft", raftHandler)
+
 	// Authentication & JWT Management Endpoints
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
 	mux.HandleFunc("/api/auth/revoke", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleRevokeToken)).ServeHTTP)
@@ -205,7 +250,8 @@ export default {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == http.MethodPost {
 			var req grantRequest
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			limitedReader := io.LimitReader(r.Body, 64*1024)
+			if err := json.NewDecoder(limitedReader).Decode(&req); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -223,6 +269,10 @@ export default {
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
+			}
+			if raftNode.Status().Role == raft.RoleLeader {
+				vBytes, _ := json.Marshal(voucher)
+				_, _ = raftNode.Propose(raft.CmdGrantLease, vBytes)
 			}
 			metricsCollector.IncCumulativeLeases()
 			_ = json.NewEncoder(w).Encode(voucher)
@@ -243,6 +293,10 @@ export default {
 		if err := leaseEng.RevokeLease(id); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
+		}
+		if raftNode.Status().Role == raft.RoleLeader {
+			rBytes, _ := json.Marshal(raft.RevokeLeasePayload{LeaseID: id})
+			_, _ = raftNode.Propose(raft.CmdRevokeLease, rBytes)
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"revoked"}`))
@@ -276,6 +330,7 @@ export default {
 	fmt.Println(" 🔒 Production Secrets Vault & HS256 JWT Authentication Enabled")
 	fmt.Println(" 🔄 Zero-Downtime Hot Reloading Active (Watcher & SIGHUP)")
 	fmt.Println(" 🚀 Edge Worker Virtual Compiler & Dynamic Route Injection Active")
+	fmt.Println(" 🤝 High-Availability Raft Distributed Cluster Active (/raft/*)")
 	fmt.Println(" 💡 Standalone Single Binary with Embedded Zero-Dependency UI")
 	fmt.Println("=================================================================")
 

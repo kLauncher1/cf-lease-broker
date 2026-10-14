@@ -17,8 +17,11 @@ dist/
 
 # Local AI Backlogs & Logs (Internal Only)
 TASK_BACKLOG.md
+ORIGINAL_REQUEST.md
 dev_logs/
+.agents/
 scripts/ARCHITECTURE_MAP.md
+*.wal
 
 # OS files
 .DS_Store

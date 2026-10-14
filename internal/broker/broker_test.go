@@ -87,3 +87,42 @@ func TestPoolAndLeaseLifecycle(t *testing.T) {
 		t.Errorf("expected Worker used %d, got %d", origAcc.WorkerUsed+100, updatedAcc.WorkerUsed)
 	}
 }
+
+func TestLeaseVoucherValidation(t *testing.T) {
+	pm := NewPoolManager()
+	engine := NewLeaseEngine(pm)
+
+	v, err := engine.GrantLease("api-service", "KV", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("GrantLease failed: %v", err)
+	}
+
+	// 1. Valid lookup
+	got, exists := engine.GetLease(v.LeaseID)
+	if !exists || got.TokenKey != v.TokenKey {
+		t.Fatalf("GetLease failed, exists=%v", exists)
+	}
+
+	// 2. Constant-time validation with valid token
+	if !engine.ValidateVoucher(v.LeaseID, v.TokenKey) {
+		t.Error("expected valid voucher token validation to return true")
+	}
+
+	// 3. Constant-time validation with wrong token
+	if engine.ValidateVoucher(v.LeaseID, "wrong_token_key") {
+		t.Error("expected wrong token validation to return false")
+	}
+
+	// 4. Non-existent lease ID
+	if engine.ValidateVoucher("non_existent_id", v.TokenKey) {
+		t.Error("expected non-existent lease ID to return false")
+	}
+
+	// 5. Revoked voucher validation
+	if err := engine.RevokeLease(v.LeaseID); err != nil {
+		t.Fatalf("RevokeLease failed: %v", err)
+	}
+	if engine.ValidateVoucher(v.LeaseID, v.TokenKey) {
+		t.Error("expected revoked voucher validation to return false")
+	}
+}

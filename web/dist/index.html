@@ -471,6 +471,84 @@ export default {
       <div id="compiler-diag-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 220px; overflow-y: auto;"></div>
     </section>
 
+    <!-- Raft Consensus & Distributed Cluster -->
+    <div class="section-header">
+      <span class="section-title">Raft Consensus &amp; Distributed Cluster (<code style="font-family: 'JetBrains Mono', monospace; color: var(--accent-cf); font-size: 14px;">/raft/*</code>)</span>
+      <span style="font-size: 12px; color: var(--text-muted);">Quorum Consensus Engine · Monotonic WAL Journal · DNS SRV Discovery · Broker FSM</span>
+    </div>
+
+    <section class="raft-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <!-- Telemetry Cards -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 20px;">
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-green);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Node Role &amp; Term</div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="raft-node-role" style="font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; color: #10b981; background: rgba(16, 185, 129, 0.15); padding: 2px 8px; border-radius: 4px;">Leader</span>
+            <span id="raft-node-term" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-muted);">Term: 0</span>
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" id="raft-node-id">Node: Initializing...</div>
+        </div>
+
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-cf);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Cluster Topology &amp; Leader</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-cf);" id="raft-leader-status">Leader: Initializing...</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" id="raft-commit-meta">Commit Index: 0 · Last Applied: 0</div>
+        </div>
+
+        <div style="background: var(--bg-surface-elevated); padding: 14px 18px; border-radius: 8px; border-left: 3px solid var(--accent-blue);">
+          <div style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">WAL Journal &amp; FSM State</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--accent-blue);" id="raft-fsm-status">0 Commands Applied</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;" id="raft-journal-meta">Log Length: 1 Entry (SHA-256 Verified)</div>
+        </div>
+      </div>
+
+      <!-- Controls Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+        <!-- Left: Interactive Command Proposer -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">Distributed State Machine Command Proposer</div>
+          <div style="display: flex; gap: 8px;">
+            <select id="raft-cmd-type" onchange="updateRaftCmdTemplate()" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none;">
+              <option value="GRANT_LEASE">GRANT_LEASE (Replicate Voucher)</option>
+              <option value="REVOKE_LEASE">REVOKE_LEASE (Cluster Revocation)</option>
+              <option value="UPDATE_QUOTA">UPDATE_QUOTA (Synchronize Quotas)</option>
+              <option value="SYNC_ACCOUNT">SYNC_ACCOUNT (Tenant Profile Sync)</option>
+              <option value="NOOP">NOOP (Barrier Probe)</option>
+            </select>
+            <button class="action-btn" onclick="proposeRaftCommand()" style="padding: 6px 12px; font-size: 12px; background: #059669;">Propose Command</button>
+            <button class="action-btn" onclick="fetchRaftJournal()" style="padding: 6px 12px; font-size: 12px; background: #475569;">Inspect WAL</button>
+          </div>
+          <textarea id="raft-cmd-payload" rows="5" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #f8fafc; font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 8px; border-radius: 6px; outline: none; width: 100%; resize: vertical;" spellcheck="false">{
+  "lease_id": "lse_edge_distributed_01",
+  "account_id": "cf-tenant-alpha",
+  "target_service": "auth-service",
+  "resource_type": "Workers",
+  "token_key": "cftok_cluster_replicated_token",
+  "endpoint_url": "https://auth-service.cf-tenant-alpha.workers.dev"
+}</textarea>
+        </div>
+
+        <!-- Right: Peer Cluster Discovery & Health -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">Cluster Peer Discovery &amp; DNS SRV Monitor</div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="raft-peer-id" placeholder="Peer ID (e.g. node-2)" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 5px 8px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; flex-basis: 35%;">
+            <input type="text" id="raft-peer-addr" placeholder="Address (http://127.0.0.1:9082)" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 5px 8px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; flex-grow: 1;">
+            <button class="action-btn" onclick="registerRaftPeer()" style="padding: 5px 10px; font-size: 11px; background: #0284c7;">Add Peer</button>
+          </div>
+          <div style="max-height: 120px; overflow-y: auto; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle); padding: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px;">
+            <div id="raft-peers-list" style="color: var(--text-muted);">Scanning active cluster peers...</div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted);">
+            <span>DNS SRV Auto-Discovery: <code style="color: var(--accent-cf);">_raft._tcp.cluster.local</code></span>
+            <button class="action-btn" onclick="refreshRaftPeers()" style="padding: 4px 8px; font-size: 10px; background: #334155;">Refresh Peering</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="raft-diag-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 220px; overflow-y: auto;"></div>
+    </section>
+
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
       <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
@@ -499,6 +577,11 @@ export default {
   </main>
 
   <script>
+    function escapeHtml(str) {
+      if (typeof str !== 'string') return String(str ?? '');
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
     let authToken = localStorage.getItem('cf_auth_token') || 'cf_admin_dev_token_9081';
 
     function getAuthHeaders(headers = {}) {
@@ -545,6 +628,59 @@ export default {
           if (wbEl && Array.isArray(workers)) wbEl.textContent = `${workers.length} Active Bundle${workers.length !== 1 ? 's' : ''} Packaged`;
           const rcEl = document.getElementById('compiler-route-count');
           if (rcEl && Array.isArray(routes)) rcEl.textContent = `${routes.length} Injected Route${routes.length !== 1 ? 's' : ''} Active`;
+        } catch (_) {}
+
+        try {
+          const [raftStatus, raftPeers] = await Promise.all([
+            fetch('/raft/status').then(r => r.ok ? r.json() : null).catch(() => null),
+            fetch('/raft/peers').then(r => r.ok ? r.json() : []).catch(() => [])
+          ]);
+
+          if (raftStatus) {
+            const roleEl = document.getElementById('raft-node-role');
+            if (roleEl) {
+              roleEl.textContent = raftStatus.role;
+              if (raftStatus.role === 'Leader') {
+                roleEl.style.color = '#10b981';
+                roleEl.style.background = 'rgba(16, 185, 129, 0.15)';
+              } else if (raftStatus.role === 'Candidate') {
+                roleEl.style.color = '#f38020';
+                roleEl.style.background = 'rgba(243, 128, 32, 0.15)';
+              } else {
+                roleEl.style.color = '#38bdf8';
+                roleEl.style.background = 'rgba(56, 189, 248, 0.15)';
+              }
+            }
+            const termEl = document.getElementById('raft-node-term');
+            if (termEl) termEl.textContent = `Term: ${raftStatus.current_term}`;
+            const idEl = document.getElementById('raft-node-id');
+            if (idEl) idEl.textContent = `Node: ${raftStatus.node_id}`;
+            const leadEl = document.getElementById('raft-leader-status');
+            if (leadEl) leadEl.textContent = `Leader: ${raftStatus.leader_id || 'Electing...'}`;
+            const cMetaEl = document.getElementById('raft-commit-meta');
+            if (cMetaEl) cMetaEl.textContent = `Commit Index: ${raftStatus.commit_index} · Last Applied: ${raftStatus.last_applied}`;
+            const fsmEl = document.getElementById('raft-fsm-status');
+            if (fsmEl) fsmEl.textContent = `${raftStatus.fsm_applied_count} Replicated Commands Applied`;
+            const jMetaEl = document.getElementById('raft-journal-meta');
+            if (jMetaEl) jMetaEl.textContent = `Log Length: ${raftStatus.log_length} Entries (SHA-256 Verified)`;
+          }
+
+          const peersEl = document.getElementById('raft-peers-list');
+          if (peersEl && Array.isArray(raftPeers)) {
+            if (raftPeers.length === 0) {
+              peersEl.innerHTML = `<span style="color: #94a3b8;">Standalone single-node leader (or awaiting remote peers via DNS SRV)</span>`;
+            } else {
+              peersEl.innerHTML = raftPeers.map(p => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                  <span><strong style="color: #38bdf8;">${escapeHtml(p.id)}</strong> (${escapeHtml(p.address)})</span>
+                  <span>
+                    <span style="color: ${p.active ? '#10b981' : '#ef4444'}; font-weight: 600;">${p.active ? 'ACTIVE' : 'DOWN'}</span>
+                    <span style="color: #94a3b8; font-size: 10px; margin-left: 6px;">${Number(p.latency_ms || 0).toFixed(1)}ms · idx:${p.match_index}</span>
+                  </span>
+                </div>
+              `).join('');
+            }
+          }
         } catch (_) {}
 
         // Render accounts
@@ -1252,6 +1388,122 @@ export default {
       } catch (err) {
         resBox.innerHTML = `<span style="color: #ef4444;">Stream Error: ${err.message}</span>`;
       }
+    }
+
+    function updateRaftCmdTemplate() {
+      const type = document.getElementById('raft-cmd-type').value;
+      const p = document.getElementById('raft-cmd-payload');
+      switch (type) {
+        case 'GRANT_LEASE':
+          p.value = JSON.stringify({
+            lease_id: 'lse_' + Math.random().toString(16).substr(2, 6),
+            account_id: 'cf-tenant-alpha',
+            target_service: 'worker-gateway',
+            resource_type: 'Workers',
+            token_key: 'cftok_' + Math.random().toString(16).substr(2, 12),
+            endpoint_url: 'https://gateway.cf-tenant-alpha.workers.dev'
+          }, null, 2);
+          break;
+        case 'REVOKE_LEASE':
+          p.value = JSON.stringify({ lease_id: 'lse_001' }, null, 2);
+          break;
+        case 'UPDATE_QUOTA':
+          p.value = JSON.stringify({ account_id: 'cf-tenant-alpha', worker_delta: 150, r2_delta_mb: 5.2, kv_read_delta: 2 }, null, 2);
+          break;
+        case 'SYNC_ACCOUNT':
+          p.value = JSON.stringify({ id: 'cf-tenant-delta', alias: 'Edge Standby Delta', plan: 'Enterprise', worker_limit: 500000, is_healthy: true }, null, 2);
+          break;
+        case 'NOOP':
+          p.value = '{}';
+          break;
+      }
+    }
+
+    async function proposeRaftCommand() {
+      const type = document.getElementById('raft-cmd-type').value;
+      const raw = document.getElementById('raft-cmd-payload').value;
+      const resBox = document.getElementById('raft-diag-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Submitting proposal ${escapeHtml(type)} to Raft cluster...`;
+
+      try {
+        let parsed = {};
+        try { parsed = JSON.parse(raw); } catch (e) {
+          resBox.innerHTML = `<span style="color: #ef4444;">Invalid JSON payload: ${escapeHtml(e.message)}</span>`;
+          return;
+        }
+
+        const res = await fetch('/raft/propose', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: type, data: parsed })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          resBox.innerHTML = `<span style="color: #ef4444;">Proposal rejected: ${escapeHtml(data.error || res.statusText)}</span>`;
+          return;
+        }
+
+        resBox.innerHTML = `
+          <div style="color: #10b981; font-weight: 600; margin-bottom: 4px;">Proposal Committed Across Cluster Quorum</div>
+          <div>Committed Log Index: <strong style="color: #38bdf8;">#${Number(data.index)}</strong> · Command: <code>${escapeHtml(type)}</code></div>
+          <div>Status: <span style="color: #10b981; font-weight: 600;">${escapeHtml(data.status)}</span> · Replicated to FSM</div>
+        `;
+        loadState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Network Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function fetchRaftJournal() {
+      const resBox = document.getElementById('raft-diag-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Reading replicated WAL journal entries...`;
+
+      try {
+        const res = await fetch('/raft/journal');
+        const entries = await res.json();
+        resBox.innerHTML = `
+          <div style="color: #38bdf8; font-weight: 600; margin-bottom: 6px;">Write-Ahead Log (WAL) Journal Snapshot (${entries.length} Total Entries)</div>
+          <pre style="color: #f8fafc; font-size: 11px; max-height: 180px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px;">${escapeHtml(JSON.stringify(entries, null, 2))}</pre>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Failed to fetch journal: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function registerRaftPeer() {
+      const id = document.getElementById('raft-peer-id').value.trim();
+      const addr = document.getElementById('raft-peer-addr').value.trim();
+      const resBox = document.getElementById('raft-diag-result');
+      if (!id || !addr) {
+        alert('Please specify both peer ID and address');
+        return;
+      }
+      resBox.style.display = 'block';
+      resBox.innerHTML = `Registering peer ${escapeHtml(id)} (${escapeHtml(addr)})...`;
+
+      try {
+        const res = await fetch('/raft/peers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: id, address: addr })
+        });
+        const data = await res.json();
+        resBox.innerHTML = `<div style="color: #10b981; font-weight: 600;">Peer ${escapeHtml(id)} Registered! Status: ${escapeHtml(data.status)}</div>`;
+        document.getElementById('raft-peer-id').value = '';
+        document.getElementById('raft-peer-addr').value = '';
+        loadState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Peer Registration Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function refreshRaftPeers() {
+      await loadState();
+      const resBox = document.getElementById('raft-diag-result');
+      resBox.style.display = 'block';
+      resBox.innerHTML = `<div style="color: #38bdf8;">Cluster peer statuses and DNS SRV discovery updated.</div>`;
     }
 
     loadState();
