@@ -613,6 +613,76 @@ export default {
       <div id="mtls-diag-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 200px; overflow-y: auto;"></div>
     </section>
 
+    <!-- Autonomous Cost Optimization & Multi-Tenant Billing Ledger (Milestone 10) -->
+    <section class="billing-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 16px; font-weight: 700; color: #fff;">Autonomous Cost Optimization &amp; Billing Ledger</span>
+          <span id="billing-status-badge" style="font-size: 11px; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 3px 10px; border-radius: 999px; font-weight: 600;">Active · Micro-Cent Ledger</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="action-btn" onclick="exportBilling('csv')" style="padding: 6px 12px; font-size: 11px; background: #0284c7;">Export CSV</button>
+          <button class="action-btn" onclick="exportBilling('jsonl')" style="padding: 6px 12px; font-size: 11px; background: #475569;">Export JSONL</button>
+          <button class="action-btn" onclick="exportBilling('opencost')" style="padding: 6px 12px; font-size: 11px; background: #059669;">OpenCost 1.0</button>
+          <button class="action-btn" onclick="runCostOptimizer()" style="padding: 6px 12px; font-size: 11px; background: #ea580c;">Run Optimizer</button>
+        </div>
+      </div>
+
+      <!-- Telemetry Cards -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px;">
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Attributed Cluster Cost</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; color: #f8fafc; margin-top: 4px;" id="billing-total-cost">$0.000000 USD</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;" id="billing-total-microcents">0 micro-cents</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Estimated Savings (Free Tier Steering)</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; color: #10b981; margin-top: 4px;" id="billing-total-savings">$0.000000 USD</div>
+          <div style="font-size: 11px; color: #10b981; margin-top: 2px;" id="billing-savings-microcents">Autonomous Overages Avoided</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Metered Requests &amp; Bandwidth</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #38bdf8; margin-top: 4px;" id="billing-metered-reqs">0 Requests · 0 CPU ms</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;" id="billing-metered-bytes">0 KB Egress Handled</div>
+        </div>
+      </div>
+
+      <!-- Two-Column Ledger and Migrations Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px;">
+        <!-- Left: Tenant Breakdown Table -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">Multi-Tenant Attribution Breakdown</div>
+          <div style="max-height: 180px; overflow-y: auto; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle);">
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono', monospace;">
+              <thead>
+                <tr style="border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface-elevated); color: var(--text-muted);">
+                  <th style="padding: 6px 10px; text-align: left;">Tenant</th>
+                  <th style="padding: 6px 10px; text-align: right;">Requests</th>
+                  <th style="padding: 6px 10px; text-align: right;">Cost (USD)</th>
+                  <th style="padding: 6px 10px; text-align: center;">Status</th>
+                </tr>
+              </thead>
+              <tbody id="billing-tenants-tbody">
+                <tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 14px;">No tenant usage recorded yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right: Real-time Workload Migration Journal -->
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Autonomous Workload Migration Journal</span>
+            <span id="billing-migrations-count" style="font-size: 11px; color: var(--text-muted);">0 Migrations</span>
+          </div>
+          <div id="billing-migrations-list" style="max-height: 180px; overflow-y: auto; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle); padding: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted);">
+            No workload migrations triggered yet.
+          </div>
+        </div>
+      </div>
+      <div id="billing-diag-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle);"></div>
+    </section>
+
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
       <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
@@ -830,6 +900,8 @@ export default {
             </tr>
           `).join('');
         }
+
+        loadBillingState();
       } catch (err) {
         console.error('Failed to load state:', err);
       }
@@ -1716,6 +1788,92 @@ export default {
       } catch (err) {
         resBox.innerHTML = `<span style="color: #ef4444;">Revocation Request Error: ${escapeHtml(err.message)}</span>`;
       }
+    }
+
+    async function loadBillingState() {
+      try {
+        const res = await fetch('/api/billing/summary');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const costEl = document.getElementById('billing-total-cost');
+        if (costEl) costEl.textContent = '$' + (data.total_cluster_cost_usd || '0.000000') + ' USD';
+        const mcEl = document.getElementById('billing-total-microcents');
+        if (mcEl) mcEl.textContent = (data.total_cluster_cost_micro_cents || 0).toLocaleString() + ' micro-cents';
+        const savEl = document.getElementById('billing-total-savings');
+        if (savEl) savEl.textContent = '$' + (data.total_cluster_savings_usd || '0.000000') + ' USD';
+        const reqsEl = document.getElementById('billing-metered-reqs');
+        if (reqsEl) reqsEl.textContent = (data.total_cluster_requests || 0).toLocaleString() + ' Requests · ' + (data.total_cluster_cpu_ms || 0) + ' CPU ms';
+        const bytesEl = document.getElementById('billing-metered-bytes');
+        if (bytesEl) bytesEl.textContent = (Math.round((data.total_cluster_bytes || 0) / 1024)).toLocaleString() + ' KB Egress Handled';
+
+        const tbody = document.getElementById('billing-tenants-tbody');
+        const tenants = data.tenants || {};
+        const tenantKeys = Object.keys(tenants);
+        if (tbody) {
+          if (tenantKeys.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 14px;">No tenant usage recorded yet.</td></tr>';
+          } else {
+            tbody.innerHTML = tenantKeys.map(k => {
+              const t = tenants[k];
+              const costUSD = (t.total_cost_micro_cents / 1000000).toFixed(6);
+              const statusColor = t.is_over_budget ? '#ef4444' : '#10b981';
+              const statusLabel = t.is_over_budget ? 'OVER BUDGET' : 'OK';
+              return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                  <td style="padding: 6px 10px; color: #fff;">${escapeHtml(t.tenant_id)}</td>
+                  <td style="padding: 6px 10px; text-align: right; color: #94a3b8;">${t.total_requests.toLocaleString()}</td>
+                  <td style="padding: 6px 10px; text-align: right; color: #fbbf24;">$${costUSD}</td>
+                  <td style="padding: 6px 10px; text-align: center;"><span style="color: ${statusColor}; font-weight: 600;">${statusLabel}</span></td>
+                </tr>
+              `;
+            }).join('');
+          }
+        }
+      } catch (_) {}
+
+      try {
+        const migRes = await fetch('/api/billing/migrations');
+        if (!migRes.ok) return;
+        const migData = await migRes.json();
+        const countEl = document.getElementById('billing-migrations-count');
+        if (countEl) countEl.textContent = (migData.count || 0) + ' Migrations';
+        const migList = document.getElementById('billing-migrations-list');
+        const migs = migData.migrations || [];
+        if (migList) {
+          if (migs.length === 0) {
+            migList.innerHTML = 'No workload migrations triggered yet.';
+          } else {
+            migList.innerHTML = migs.slice(0, 10).map(m => `
+              <div style="margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.04);">
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: #fbbf24; font-weight: 600;">${escapeHtml(m.source_account_id)} ➔ ${escapeHtml(m.target_account_id)}</span>
+                  <span style="color: #10b981;">+$${(m.estimated_savings_micro_cents / 1000000).toFixed(4)} saved</span>
+                </div>
+                <div style="color: #94a3b8; font-size: 10px;">${escapeHtml(m.reason)} · ${new Date(m.timestamp).toLocaleTimeString()}</div>
+              </div>
+            `).join('');
+          }
+        }
+      } catch (_) {}
+    }
+
+    async function runCostOptimizer() {
+      const diag = document.getElementById('billing-diag-result');
+      diag.style.display = 'block';
+      diag.textContent = 'Evaluating accounts and executing autonomous cost migration...';
+      try {
+        const res = await fetch('/api/billing/optimize', { method: 'POST' });
+        const data = await res.json();
+        diag.innerHTML = `<span style="color: #10b981; font-weight: 600;">Optimization Complete:</span> ${data.migrations_triggered} migrations executed. Total savings: $${escapeHtml(data.total_savings_usd)} USD.`;
+        loadBillingState();
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #ef4444;">Optimization Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    function exportBilling(format) {
+      window.open('/api/billing/ledger?format=' + encodeURIComponent(format), '_blank');
     }
 
     loadState();

@@ -18,6 +18,8 @@
 
 ## ⚡ Highlights
 
+- **Autonomous Cost Optimization & Multi-Tenant Billing Ledger**: Granular compute, request, and storage metering with micro-cent cost attribution ($1.00 = 1,000,000 micro-cents) based on official Cloudflare pricing rates across Workers, KV, and R2, combined with autonomous workload migration away from paid tier overages to standby free tier accounts (`internal/billing/`).
+- **OpenCost 1.0 & Multi-Format Financial Journals**: Out-of-the-box billing journal exports in RFC 4180 CSV, newline-delimited JSON (JSONL), and standard OpenCost 1.0 specification formats (`/api/billing/ledger?format=opencost`) for enterprise edge cloud financial engineering.
 - **Zero-Trust Mutual TLS (mTLS) & Client Certificate Verification**: Comprehensive X.509 client certificate chain verification, certificate revocation list (CRL) denylist checking, validity window enforcement, wildcard Subject Alternative Name (SAN) matching (`*.domain.com`), and common name / issuer access policies for upstream reverse proxy routes (`internal/mtls/verifier.go`).
 - **Ephemeral Certificate Authority (CA) & Peering Mesh**: Zero-dependency in-memory ECDSA P-256 root certificate generation, dynamic client certificate issuance, CRL serial tracking, and cryptographically signed inter-broker cluster peering tokens (`internal/mtls/ca.go`).
 - **Hardware-Backed TPM 2.0 Attestation & Windows Certificate Store**: Leverages Windows Cryptographic Next Generation (CNG) `ncrypt.dll` to query Microsoft Platform Crypto Provider for hardware TPM 2.0 presence, inspect the Windows system certificate store (`crypt32.dll`), and generate deterministic platform configuration register (PCR) quote measurements (`internal/mtls/tpm_windows.go`).
@@ -361,10 +363,77 @@ curl http://localhost:9081/api/mtls/tpm/attest
 
 ---
 
+## 💰 Autonomous Cost Optimization & Multi-Tenant Billing Ledger
+
+`cf-lease-broker` provides a high-precision, multi-tenant billing engine and cost optimizer designed to track consumption down to micro-cents and autonomously prevent cloud billing overages:
+
+### 1. Granular Micro-Cent Cost Attribution (`internal/billing/meter.go`)
+- **Micro-Cent Precision**: Tracks resource usage with integer micro-cent math ($1.00 = 1,000,000 micro-cents) to completely eliminate floating-point rounding drift.
+- **Full Cloudflare Pricing Model**: Pre-calibrated with official Cloudflare rates:
+  - Workers Requests: $0.30 per 1M requests (300,000 micro-cents)
+  - Workers CPU Duration: $0.02 per 1M CPU milliseconds (20,000 micro-cents)
+  - KV Reads: $0.50 per 1M reads (500,000 micro-cents)
+  - KV Writes: $5.00 per 1M writes (5,000,000 micro-cents)
+  - R2 Storage: $0.015 per GB-month (15,000 micro-cents)
+  - R2 Class A Operations: $4.50 per 1M operations (4,500,000 micro-cents)
+  - R2 Class B Operations: $0.36 per 1M operations (360,000 micro-cents)
+  - Egress Bandwidth: $0.00 (Cloudflare zero egress guarantee)
+- **Daily Free-Tier Allowance**: Tracks daily free allowances (100,000 free Workers requests and 100,000 free KV reads per free account) with automatic UTC midnight rollover, attributing $0 cost while accumulating estimated savings.
+
+### 2. Autonomous Workload Migration (`internal/billing/optimizer.go`)
+- **Proactive Overage Detection**: Continuously audits account usage against configurable overage thresholds (default 80%).
+- **Standby Free Tier Prioritization**: When a paid or heavily utilized account approaches its quota or budget ceiling, the optimizer autonomously re-routes traffic or sets cooldown probation, directing subsequent leases and proxy traffic to healthy standby free tier accounts with unused daily quotas.
+- **Cumulative Savings Tracking**: Quantifies and reports the exact micro-cents saved by steering traffic away from paid tier overages.
+
+### 3. OpenCost 1.0 & Multi-Format Financial Export (`internal/billing/journal.go`)
+- **OpenCost 1.0 Specification**: Exports tenant billing allocations directly matching the OpenCost edge compute specification (`/api/billing/ledger?format=opencost`).
+- **RFC 4180 CSV Export**: Generates comma-separated billing records for spreadsheet analysis and finance audits (`/api/billing/ledger?format=csv`).
+- **Newline-Delimited JSON (JSONL)**: Streams structured log records for ingestion into BigQuery, Datadog, or Elasticsearch (`/api/billing/ledger?format=jsonl`).
+
+### Billing & Cost Curl Examples:
+
+```bash
+# 1. Query cluster-wide cost summary and tenant breakdown
+curl http://localhost:9081/api/billing/summary
+
+# 2. Export billing ledger in OpenCost 1.0 JSON format
+curl http://localhost:9081/api/billing/ledger?format=opencost
+
+# 3. Download RFC 4180 CSV billing journal
+curl http://localhost:9081/api/billing/ledger?format=csv -o ledger.csv
+
+# 4. Trigger on-demand workload migration evaluation
+curl -X POST http://localhost:9081/api/billing/optimize
+
+# 5. Inspect recent autonomous migration history and savings
+curl http://localhost:9081/api/billing/migrations
+
+# 6. Ingest custom tenant usage event
+curl -X POST http://localhost:9081/api/billing/meter \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "analytics-tenant",
+    "account_id": "cf-tenant-alpha",
+    "service": "workers",
+    "resource_type": "requests",
+    "quantity": 25000,
+    "duration_ms": 120
+  }'
+```
+
+---
+
 ## 📡 REST API Reference
 
 | Endpoint | Method | Auth | Description |
 | :--- | :---: | :---: | :--- |
+| `/api/billing/summary` | `GET` | Public | Cluster cost summary, savings, and tenant/account aggregates |
+| `/api/billing/ledger` | `GET` | Public | Ledger export (`?format=json|csv|jsonl|opencost&tenant=...&limit=...`) |
+| `/api/billing/meter` | `POST` | Public | Ingest and attribute resource consumption record |
+| `/api/billing/optimize` | `POST` | Public | Trigger autonomous workload migration evaluation |
+| `/api/billing/migrations` | `GET` | Public | Inspect recent workload migration history and total savings |
+| `/api/billing/rates` | `GET/POST` | Public | Query or update active Cloudflare pricing rates in micro-cents |
+| `/api/billing/reset` | `POST` | Public | Clear in-memory billing ledger and aggregates |
 | `/api/mtls/status` | `GET` | Public | Inspect active Root CA stats, policy, and hardware TPM 2.0 attestation |
 | `/api/mtls/ca/cert` | `GET` | Public | Download Root CA public certificate in PEM format |
 | `/api/mtls/ca/issue` | `POST` | Public | Issue an ephemeral client/peer certificate with SANs and custom validity |

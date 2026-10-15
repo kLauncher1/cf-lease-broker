@@ -82,9 +82,9 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 ---
 
 ## Release: v0.10.0 (Autonomous Cost Optimization & Billing Ledger)
-- [ ] Granular per-lease compute and bandwidth metering with micro-cent cost attribution.
-- [ ] Automated workload migration away from paid tier overages to standby free tier accounts.
-- [ ] Exportable billing journals in CSV, JSONL, and OpenCost specification formats.
+- [x] Granular per-lease compute and bandwidth metering with micro-cent cost attribution.
+- [x] Automated workload migration away from paid tier overages to standby free tier accounts.
+- [x] Exportable billing journals in CSV, JSONL, and OpenCost specification formats.
 
 ---
 
@@ -119,3 +119,17 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 ## Release: v0.15.0 (Zero-Knowledge Edge Proof Verifier)
 - [ ] Cryptographic verification of tenant worker isolation and quota attestations without revealing underlying API credentials.
 - [ ] Succinct non-interactive zero-knowledge proofs for trustless edge verification.
+
+---
+
+## Release: v0.16.0 (Autonomous Multi-Tenant eBPF DDoS Scrubbing & Edge Mitigation)
+- [ ] Line-rate XDP packet filter dropping volumetric SYN floods and amplification attacks at zero CPU cost.
+- [ ] Stateful IP reputation scoring and automatic challenge token issuance for anomalous client streams.
+- [ ] Microsecond-scale mitigation telemetry export to edge monitoring mesh.
+
+---
+
+## Release: v0.17.0 (Edge Hardware Secure Enclave Intel SGX & AMD SEV Memory Attestation)
+- [ ] Hardware-isolated secure memory enclave shielding cryptographic keys from host OS compromise.
+- [ ] Remote attestation quotes cryptographically verified during inter-broker lease peering.
+- [ ] Confidential computing runtime for zero-trust worker bundle execution.

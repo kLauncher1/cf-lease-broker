@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kLauncher1/cf-lease-broker/internal/billing"
 	"github.com/kLauncher1/cf-lease-broker/internal/broker"
 	"github.com/kLauncher1/cf-lease-broker/internal/cloudflare"
 	"github.com/kLauncher1/cf-lease-broker/internal/compiler"
@@ -26,7 +27,7 @@ import (
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.9.0"
+	Version = "0.10.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -188,6 +189,32 @@ export default {
 		log.Println("🔒 Zero-Trust mTLS Client Certificate Verification Enforced on Edge Proxy")
 	}
 
+	// Autonomous Cost Optimization & Multi-Tenant Billing Ledger (Milestone 10)
+	billingMeter := billing.NewBillingMeter(billing.DefaultCloudflareRates())
+	for _, acc := range activeConfig.Accounts {
+		tier := billing.TierPaidStandard
+		if strings.Contains(strings.ToLower(acc.Plan), "free") {
+			tier = billing.TierFree
+		}
+		billingMeter.RegisterAccount(acc.ID, tier, 10000000)
+	}
+	costOptimizer := billing.NewCostOptimizer(billingMeter, poolMgr, billing.DefaultMigrationRule())
+	billingHandler := billing.NewBillingHandler(billingMeter, costOptimizer)
+	proxyHandler.SetUsageRecorder(func(tenantID, accountID, service string, cpuMs, bytesIn, bytesOut int64) {
+		billingMeter.RecordProxyRequest(tenantID, accountID, service, cpuMs, bytesIn, bytesOut)
+	})
+
+	// Background ticker for autonomous workload migration away from paid overages
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if events := costOptimizer.EvaluateWorkloadMigration(); len(events) > 0 {
+				log.Printf("[Billing] Autonomous Cost Optimizer migrated %d workloads to standby free accounts", len(events))
+			}
+		}
+	}()
+
 	// Seed encrypted credentials for pooled accounts into vault and poolMgr
 	for _, acc := range activeConfig.Accounts {
 		poolMgr.UpsertAccount(acc.ToAccountStatus())
@@ -207,6 +234,11 @@ export default {
 			if acc.APIToken != "" {
 				_ = vault.StoreCredential(acc.ID, []byte(acc.APIToken))
 			}
+			tier := billing.TierPaidStandard
+			if strings.Contains(strings.ToLower(acc.Plan), "free") {
+				tier = billing.TierFree
+			}
+			billingMeter.RegisterAccount(acc.ID, tier, 10000000)
 		}
 		poolMgr.SyncAccounts(statuses)
 		log.Println("[Config] Hot reload applied successfully with zero downtime.")
@@ -265,6 +297,10 @@ export default {
 	// Zero-Trust Mutual TLS (mTLS) & Ephemeral CA Mesh (/api/mtls/*)
 	mux.Handle("/api/mtls/", mtlsHandler)
 	mux.Handle("/api/mtls", mtlsHandler)
+
+	// Autonomous Cost Optimization & Multi-Tenant Billing Ledger (/api/billing/*)
+	mux.Handle("/api/billing/", billingHandler)
+	mux.Handle("/api/billing", billingHandler)
 
 	// Authentication & JWT Management Endpoints
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
@@ -365,6 +401,7 @@ export default {
 	fmt.Println(" 🚀 Edge Worker Virtual Compiler & Dynamic Route Injection Active")
 	fmt.Println(" 🤝 High-Availability Raft Distributed Cluster Active (/raft/*)")
 	fmt.Println(" 🛡️ Zero-Trust Mutual TLS (mTLS) & Hardware Attestation Active (/api/mtls/*)")
+	fmt.Println(" 💰 Autonomous Cost Optimization & Multi-Tenant Billing Ledger Active (/api/billing/*)")
 	fmt.Println(" 💡 Standalone Single Binary with Embedded Zero-Dependency UI")
 	fmt.Println("=================================================================")
 

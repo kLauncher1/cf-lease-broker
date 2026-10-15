@@ -338,3 +338,49 @@ func TestProxyLargeBodyRejection(t *testing.T) {
 		t.Errorf("expected 413 Request Entity Too Large, got %d", rec.Code)
 	}
 }
+
+func TestProxyUsageRecorderIntegration(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	var recordedTenant, recordedAccount, recordedService string
+	var recordedBytesIn int64
+	called := false
+
+	handler.SetUsageRecorder(func(tenantID, accountID, service string, cpuMs, bytesIn, bytesOut int64) {
+		called = true
+		recordedTenant = tenantID
+		recordedAccount = accountID
+		recordedService = service
+		recordedBytesIn = bytesIn
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/proxy/edge-api/ping", strings.NewReader(`{"hello":"world"}`))
+	req.Header.Set("X-Tenant-ID", "tenant-test-123")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if !called {
+		t.Fatalf("expected UsageRecorder callback to be triggered")
+	}
+	if recordedTenant != "tenant-test-123" || recordedService != "edge-api" || recordedBytesIn != 17 {
+		t.Fatalf("unexpected telemetry captured: tenant=%s, service=%s, bytes=%d", recordedTenant, recordedService, recordedBytesIn)
+	}
+	if recordedAccount == "" {
+		t.Fatalf("expected non-empty account ID")
+	}
+}

@@ -31,6 +31,7 @@ type ProxyHandler struct {
 	httpClient       *http.Client
 	TargetURLBuilder TargetURLBuilderFunc
 	CertVerifier     func(r *http.Request) error
+	UsageRecorder    func(tenantID, accountID, service string, cpuMs, bytesIn, bytesOut int64)
 	MaxRetries       int
 	MaxBodyBytes     int64
 }
@@ -109,6 +110,7 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		maxAttempts = DefaultMaxRetries
 	}
 
+	startTime := time.Now()
 	attempts := 0
 
 	for attempts < maxAttempts {
@@ -151,10 +153,24 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Successful or non-transient status: stream upstream response back to caller
 		p.forwardResponse(w, resp, account.ID, attempts)
+		if p.UsageRecorder != nil {
+			tenantID := r.Header.Get("X-Tenant-ID")
+			if tenantID == "" {
+				tenantID = "default"
+			}
+			durationMs := time.Since(startTime).Milliseconds()
+			bytesIn := int64(len(bodyBytes))
+			p.UsageRecorder(tenantID, account.ID, service, durationMs, bytesIn, 0)
+		}
 		return
 	}
 
 	p.writePoolExhaustedError(w, attempts, "retry attempts exhausted across all accounts")
+}
+
+// SetUsageRecorder attaches an optional telemetry callback for usage and billing metering.
+func (p *ProxyHandler) SetUsageRecorder(recorder func(tenantID, accountID, service string, cpuMs, bytesIn, bytesOut int64)) {
+	p.UsageRecorder = recorder
 }
 
 var errBodyTooLarge = errors.New("request body too large")
