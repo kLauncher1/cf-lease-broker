@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-10-15
+
+### Added
+- **Multi-Tenant Metering & Micro-Cent Cost Attribution**: Implemented `internal/billing/meter.go` and `internal/billing/types.go` supporting thread-safe, real-time compute, request, and storage metering with micro-cent cost attribution ($1.00 = 1,000,000 micro-cents) based on official Cloudflare pricing rates across Workers, KV, and R2.
+- **Daily Free-Tier Quota Tracking & Zero-Cost Deductions**: Added per-account daily quota tracking for Workers (100,000 free requests/day) and KV reads (100,000 free reads/day) with automatic UTC rollover and estimated savings accumulation.
+- **Autonomous Workload Migration & Cost Optimizer**: Implemented `internal/billing/optimizer.go` continuously monitoring pooled accounts and automatically rebalancing or steering traffic away from over-budget accounts and paid tier overages to healthy standby accounts with unused free tier capacity.
+- **RFC 4180 CSV, JSONL & OpenCost 1.0 Exporters**: Implemented `internal/billing/journal.go` generating standards-compliant CSV billing journals, newline-delimited JSON (JSONL) cost records, and OpenCost 1.0 JSON allocation reports for enterprise cloud cost management.
+- **Billing & Cost Optimization REST API**: Implemented `internal/billing/handler.go` and registered `/api/billing/*` in `main.go`, exposing `/api/billing/summary`, `/api/billing/ledger` (with `?format=json|csv|jsonl|opencost`), `/api/billing/meter`, `/api/billing/optimize`, `/api/billing/migrations`, `/api/billing/rates`, and `/api/billing/reset`.
+- **Interactive Billing Ledger & Optimizer Dashboard Panel**: Enhanced `web/dist/index.html` with an embedded glassmorphism cost optimization panel featuring live attributed cluster cost, estimated savings, tenant breakdown table, real-time workload migration journal, and one-click export buttons (CSV, JSONL, OpenCost).
+- **Comprehensive Billing Unit Test Suite**: Added 10 exhaustive unit tests in `internal/billing/billing_test.go` verifying micro-cent precision, free-tier allowances, tenant and account aggregation, automated workload migration, CSV parsing, JSONL streaming, OpenCost 1.0 compliance, HTTP REST endpoints, input body bounding, and multi-threaded concurrency.
+
+### Changed
+- Mounted `/api/billing/` routes on HTTP mux and initialized `BillingMeter`, `CostOptimizer`, and `BillingHandler` in `main.go`.
+- Added `UsageRecorder` telemetry hook to `ProxyHandler` (`internal/proxy/proxy.go`) and wired transparent proxy telemetry directly into the billing engine.
+- Added background ticker in `main.go` triggering automated workload migration evaluation every 30 seconds.
+- Bumped application version to `0.10.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.9.0] - 2026-10-14
 
 ### Added
