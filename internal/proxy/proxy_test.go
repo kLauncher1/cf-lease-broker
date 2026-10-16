@@ -384,3 +384,41 @@ func TestProxyUsageRecorderIntegration(t *testing.T) {
 		t.Fatalf("expected non-empty account ID")
 	}
 }
+
+func TestProxyColoResolverIntegration(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"routed"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	handler.SetColoResolver(func(r *http.Request) (string, float64) {
+		if r.Header.Get("CF-IPCountry") == "KR" {
+			return "ICN", 42.5
+		}
+		return "IAD", 350.0
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/endpoint", nil)
+	req.Header.Set("CF-IPCountry", "KR")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-CF-Broker-Colo") != "ICN" {
+		t.Fatalf("expected X-CF-Broker-Colo header ICN, got %s", rec.Header().Get("X-CF-Broker-Colo"))
+	}
+	if rec.Header().Get("X-CF-Broker-Distance-Km") != "42.5" {
+		t.Fatalf("expected X-CF-Broker-Distance-Km header 42.5, got %s", rec.Header().Get("X-CF-Broker-Distance-Km"))
+	}
+}

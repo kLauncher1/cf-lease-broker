@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-10-16
+
+### Added
+- **Intelligent Edge Health Radar Engine**: Implemented `internal/radar/probe.go` and `internal/radar/types.go` supporting concurrent synthetic edge probing across global Cloudflare Points of Presence (PoPs), tracking exponential moving average (EMA) round-trip latency (`alpha=0.25`), latency jitter calculations, loss rates, and composite health scores (0-100).
+- **Representative Global PoP Database & Geolocation Mapper**: Implemented `internal/radar/pops.go` providing a structured registry of Cloudflare edge data centers spanning 6 continental regions (North America, Europe, Asia Pacific, Latin America, Middle East & Africa, Oceania) with IATA airport codes, geographic coordinates, tiers, probe endpoints, and country code geolocation inference (`CountryToGeo`).
+- **Sub-Millisecond Anycast Geo-Routing & Haversine Distance Solver**: Implemented `internal/radar/router.go` featuring great-circle distance calculations via the Haversine formula, composite routing score evaluations combining distance, latency EMA, jitter, and degraded state penalties, and sub-millisecond route resolution (< 1ms) mapping clients or tenants to their optimal edge PoP.
+- **BGP Route Anomaly Detection & Autonomous Lease Migration**: Built automated detection for BGP route flaps and severe latency spikes (> 35ms or 1.8x EMA shift) with a historical event ledger (`BGPEvent`) and autonomous pre-emptive lease migration (`MigrateLeasesFromColo`) dynamically shifting active and in-flight workloads away from degrading PoPs to healthy standby alternatives before network packet loss occurs.
+- **Radar REST API Endpoints**: Implemented `internal/radar/handler.go` and registered `/api/radar/*` in `main.go`, exposing `/api/radar/status`, `/api/radar/pops` (with optional `?region=` filtering), `/api/radar/probe` (individual colo or concurrent all-PoP probes), `/api/radar/route` (sub-millisecond geolocation resolver), `/api/radar/events` (recent BGP anomaly and migration journals), and `/api/radar/migrate` (operator evacuation trigger) with strict 64KB request body bounding.
+- **Interactive Edge Radar & Anycast Dashboard Panel**: Enhanced `web/dist/index.html` with an embedded glassmorphism radar management card featuring live PoP telemetry counters, an interactive Anycast routing resolver simulator with city presets and custom coordinate inputs, a regional PoP latency table with live jitter and status badges, and a real-time stream of BGP route anomalies and autonomous migration events.
+- **Comprehensive Radar Unit & Integration Test Suite**: Added 10 exhaustive unit tests in `internal/radar/radar_test.go` covering PoP registry lookups, region filtering, Haversine distance accuracy, synthetic probe EMA smoothing, sub-millisecond route resolution, degraded PoP failovers, BGP route flap detection, autonomous lease migrations, REST API handlers, 40-worker concurrent execution, and request body size bounding.
+
+### Changed
+- Mounted `/api/radar/` routes on HTTP mux and initialized `ProbeEngine`, `RadarRouter`, and `RadarHandler` in `main.go`.
+- Added `ColoResolver` hook to `ProxyHandler` (`internal/proxy/proxy.go`) and configured downstream telemetry headers (`X-CF-Broker-Colo`, `X-CF-Broker-Distance-Km`) annotating reverse proxy responses with the resolved edge PoP and distance.
+- Integrated lease issuance in `main.go` with `RadarRouter.AssignLeaseColo` to maintain active tenant-to-colo affinity bindings.
+- Bumped application version to `0.11.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.10.0] - 2026-10-15
 
 ### Added

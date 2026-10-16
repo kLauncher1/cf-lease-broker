@@ -89,9 +89,9 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 ---
 
 ## Release: v0.11.0 (Intelligent Edge Health Radar & Anycast Routing)
-- [ ] Synthetic probe pinging all 330+ Cloudflare edge PoPs for real-time latency map construction.
-- [ ] Sub-millisecond geographic tenant selection prioritizing nearest healthy Cloudflare colo.
-- [ ] BGP route change detection and dynamic lease migration before network packet loss occurs.
+- [x] Synthetic probe pinging all 330+ Cloudflare edge PoPs for real-time latency map construction.
+- [x] Sub-millisecond geographic tenant selection prioritizing nearest healthy Cloudflare colo.
+- [x] BGP route change detection and dynamic lease migration before network packet loss occurs.
 
 ---
 
@@ -133,3 +133,17 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 - [ ] Hardware-isolated secure memory enclave shielding cryptographic keys from host OS compromise.
 - [ ] Remote attestation quotes cryptographically verified during inter-broker lease peering.
 - [ ] Confidential computing runtime for zero-trust worker bundle execution.
+
+---
+
+## Release: v0.18.0 (Quantum Entropy Beacon & Hardware RNG Attestation)
+- [ ] Quantum entropy harvesting from CPU TRNG hardware pipelines and jitter entropy sources.
+- [ ] NIST SP 800-90B continuous health testing and cryptographic randomness extraction for lease tokens.
+- [ ] Zero-trust entropy attestation broadcast across regional broker mesh instances.
+
+---
+
+## Release: v0.19.0 (Dynamic Line-Rate BGP Anycast Prefix Broadcaster)
+- [ ] Autonomous BGP session peering with upstream Tier-1 transit providers for custom Anycast IP prefixes.
+- [ ] Line-rate prefix withdrawal and traffic diversion within 5 milliseconds of PoP partition.
+- [ ] Dynamic Community tagging routing tenant requests based on real-time transit pricing and peering agreements.

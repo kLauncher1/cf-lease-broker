@@ -32,6 +32,7 @@ type ProxyHandler struct {
 	TargetURLBuilder TargetURLBuilderFunc
 	CertVerifier     func(r *http.Request) error
 	UsageRecorder    func(tenantID, accountID, service string, cpuMs, bytesIn, bytesOut int64)
+	ColoResolver     func(r *http.Request) (colo string, distanceKm float64)
 	MaxRetries       int
 	MaxBodyBytes     int64
 }
@@ -152,7 +153,7 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Successful or non-transient status: stream upstream response back to caller
-		p.forwardResponse(w, resp, account.ID, attempts)
+		p.forwardResponse(w, r, resp, account.ID, attempts)
 		if p.UsageRecorder != nil {
 			tenantID := r.Header.Get("X-Tenant-ID")
 			if tenantID == "" {
@@ -171,6 +172,11 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // SetUsageRecorder attaches an optional telemetry callback for usage and billing metering.
 func (p *ProxyHandler) SetUsageRecorder(recorder func(tenantID, accountID, service string, cpuMs, bytesIn, bytesOut int64)) {
 	p.UsageRecorder = recorder
+}
+
+// SetColoResolver attaches an optional resolver to annotate proxy telemetry headers with nearest edge PoP.
+func (p *ProxyHandler) SetColoResolver(resolver func(r *http.Request) (colo string, distanceKm float64)) {
+	p.ColoResolver = resolver
 }
 
 var errBodyTooLarge = errors.New("request body too large")
@@ -264,7 +270,7 @@ func (p *ProxyHandler) createUpstreamRequest(r *http.Request, targetURL string, 
 	return req, nil
 }
 
-func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, resp *http.Response, accountID string, attempts int) {
+func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, resp *http.Response, accountID string, attempts int) {
 	defer func() { _ = resp.Body.Close() }()
 
 	// Strip hop-by-hop headers from upstream response
@@ -291,6 +297,12 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, resp *http.Respons
 	// Broker telemetry headers
 	w.Header().Set("X-CF-Broker-Account", accountID)
 	w.Header().Set("X-CF-Broker-Attempts", strconv.Itoa(attempts))
+	if p.ColoResolver != nil && r != nil {
+		if colo, dist := p.ColoResolver(r); colo != "" {
+			w.Header().Set("X-CF-Broker-Colo", colo)
+			w.Header().Set("X-CF-Broker-Distance-Km", fmt.Sprintf("%.1f", dist))
+		}
+	}
 
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)

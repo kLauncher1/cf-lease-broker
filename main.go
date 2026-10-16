@@ -20,6 +20,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/mtls"
 	"github.com/kLauncher1/cf-lease-broker/internal/proxy"
 	"github.com/kLauncher1/cf-lease-broker/internal/quota"
+	"github.com/kLauncher1/cf-lease-broker/internal/radar"
 	"github.com/kLauncher1/cf-lease-broker/internal/raft"
 	"github.com/kLauncher1/cf-lease-broker/internal/security"
 	"github.com/kLauncher1/cf-lease-broker/internal/storage"
@@ -27,7 +28,7 @@ import (
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.10.0"
+	Version = "0.11.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -215,6 +216,34 @@ export default {
 		}
 	}()
 
+	// Intelligent Edge Health Radar & Latency-Optimized Anycast Geo-Routing (Milestone 11)
+	probeEngine := radar.NewProbeEngine(radar.DefaultPoPList())
+	radarRouter := radar.NewRadarRouter(probeEngine)
+	radarHandler := radar.NewRadarHandler(radarRouter, probeEngine)
+	probeEngine.Start(60 * time.Second)
+	defer probeEngine.Stop()
+
+	proxyHandler.SetColoResolver(func(r *http.Request) (string, float64) {
+		country := r.Header.Get("CF-IPCountry")
+		if country == "" {
+			country = r.Header.Get("X-Country-Code")
+		}
+		loc := radar.GeoPoint{}
+		if country != "" {
+			if geo, found := radar.CountryToGeo(country); found {
+				loc = geo
+			}
+		}
+		tenantID := r.Header.Get("X-Tenant-ID")
+		var rec radar.RouteRecommendation
+		if tenantID != "" {
+			rec = radarRouter.ResolveTenantColo(tenantID, loc)
+		} else {
+			rec = radarRouter.ResolveOptimalColo(loc, false)
+		}
+		return rec.Colo, rec.DistanceKm
+	})
+
 	// Seed encrypted credentials for pooled accounts into vault and poolMgr
 	for _, acc := range activeConfig.Accounts {
 		poolMgr.UpsertAccount(acc.ToAccountStatus())
@@ -302,6 +331,10 @@ export default {
 	mux.Handle("/api/billing/", billingHandler)
 	mux.Handle("/api/billing", billingHandler)
 
+	// Intelligent Edge Health Radar & Latency-Optimized Anycast Geo-Routing (/api/radar/*)
+	mux.Handle("/api/radar/", radarHandler)
+	mux.Handle("/api/radar", radarHandler)
+
 	// Authentication & JWT Management Endpoints
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
 	mux.HandleFunc("/api/auth/revoke", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleRevokeToken)).ServeHTTP)
@@ -343,6 +376,8 @@ export default {
 				vBytes, _ := json.Marshal(voucher)
 				_, _ = raftNode.Propose(raft.CmdGrantLease, vBytes)
 			}
+			rec := radarRouter.ResolveOptimalColo(radar.GeoPoint{}, false)
+			radarRouter.AssignLeaseColo(voucher.LeaseID, req.TargetService, rec.Colo)
 			metricsCollector.IncCumulativeLeases()
 			_ = json.NewEncoder(w).Encode(voucher)
 			return
@@ -402,6 +437,7 @@ export default {
 	fmt.Println(" 🤝 High-Availability Raft Distributed Cluster Active (/raft/*)")
 	fmt.Println(" 🛡️ Zero-Trust Mutual TLS (mTLS) & Hardware Attestation Active (/api/mtls/*)")
 	fmt.Println(" 💰 Autonomous Cost Optimization & Multi-Tenant Billing Ledger Active (/api/billing/*)")
+	fmt.Println(" 🛰️ Intelligent Edge Health Radar & Anycast Geo-Routing Active (/api/radar/*)")
 	fmt.Println(" 💡 Standalone Single Binary with Embedded Zero-Dependency UI")
 	fmt.Println("=================================================================")
 
