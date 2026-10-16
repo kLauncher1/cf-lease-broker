@@ -18,6 +18,8 @@
 
 ## ⚡ Highlights
 
+- **Intelligent Edge Health Radar & Anycast Geo-Routing**: Concurrent synthetic probing of global Cloudflare edge Points of Presence (PoPs), tracking exponential moving average (EMA) latency (`alpha=0.25`), jitter, and composite health scores, combined with sub-millisecond (< 1ms) Anycast geographic routing and BGP route flap anomaly detection (`internal/radar/`).
+- **Autonomous Pre-Emptive Lease Migration**: Dynamically shifts active and in-flight microservice leases away from degrading edge PoPs to healthy standby alternatives before network packet loss or socket timeouts occur.
 - **Autonomous Cost Optimization & Multi-Tenant Billing Ledger**: Granular compute, request, and storage metering with micro-cent cost attribution ($1.00 = 1,000,000 micro-cents) based on official Cloudflare pricing rates across Workers, KV, and R2, combined with autonomous workload migration away from paid tier overages to standby free tier accounts (`internal/billing/`).
 - **OpenCost 1.0 & Multi-Format Financial Journals**: Out-of-the-box billing journal exports in RFC 4180 CSV, newline-delimited JSON (JSONL), and standard OpenCost 1.0 specification formats (`/api/billing/ledger?format=opencost`) for enterprise edge cloud financial engineering.
 - **Zero-Trust Mutual TLS (mTLS) & Client Certificate Verification**: Comprehensive X.509 client certificate chain verification, certificate revocation list (CRL) denylist checking, validity window enforcement, wildcard Subject Alternative Name (SAN) matching (`*.domain.com`), and common name / issuer access policies for upstream reverse proxy routes (`internal/mtls/verifier.go`).
@@ -423,10 +425,59 @@ curl -X POST http://localhost:9081/api/billing/meter \
 
 ---
 
+## 🛰️ Intelligent Edge Health Radar & Anycast Geo-Routing
+
+`cf-lease-broker` features an autonomous Edge Health Radar engine that monitors global Cloudflare Points of Presence (PoPs), detects network anomalies before packet loss occurs, and resolves optimal Anycast routes with sub-millisecond precision:
+
+### 1. Synthetic Edge Probing & Telemetry (`internal/radar/probe.go`)
+- **Exponential Moving Average (EMA)**: Smooths high-frequency probe observations (`alpha=0.25`) to prevent route thrashing during momentary jitter.
+- **Latency Jitter & Loss Scoring**: Computes statistical jitter and packet loss ratios, generating composite health indices (0-100) per PoP.
+- **Concurrent Dispatch**: Bounded worker pools ping edge endpoints simultaneously without resource exhaustion.
+
+### 2. Sub-Millisecond Anycast Geo-Routing (`internal/radar/router.go`)
+- **Haversine Distance**: Calculates exact great-circle spherical distance between client coordinates and edge PoP locations.
+- **Composite Scoring**: Optimizes across geographic distance, latency EMA, jitter, and operational health status.
+- **Tenant Affinity**: Binds tenant leases to their optimal regional PoPs while retaining sub-millisecond route resolution.
+
+### 3. BGP Route Anomaly Detection & Proactive Migration
+- **Route Flap Detection**: Flags latency deviations exceeding 35ms or 1.8x baseline EMA as critical anomalies.
+- **Pre-Emptive Evacuation**: Automatically migrates active leases assigned to degraded PoPs to healthy standby alternatives before client connections experience packet loss or socket timeouts.
+
+### Radar Curl Examples:
+
+```bash
+# 1. Query radar status and global telemetry summary
+curl http://localhost:9081/api/radar/status
+
+# 2. List all monitored PoPs in Asia Pacific
+curl "http://localhost:9081/api/radar/pops?region=Asia%20Pacific"
+
+# 3. Resolve optimal edge PoP for a client location (Seoul, KR)
+curl -X POST http://localhost:9081/api/radar/route \
+  -H "Content-Type: application/json" \
+  -d '{"lat": 37.5665, "lon": 126.9780, "country": "KR"}'
+
+# 4. Trigger concurrent synthetic probe across all edge PoPs
+curl -X POST http://localhost:9081/api/radar/probe \
+  -H "Content-Type: application/json" \
+  -d '{"concurrency": 10}'
+
+# 5. Inspect recent BGP route flaps and autonomous migration events
+curl http://localhost:9081/api/radar/events
+```
+
+---
+
 ## 📡 REST API Reference
 
 | Endpoint | Method | Auth | Description |
 | :--- | :---: | :---: | :--- |
+| `/api/radar/status` | `GET` | Public | Radar engine status, tracked PoPs, global latency, and migration counts |
+| `/api/radar/pops` | `GET` | Public | List monitored edge PoPs with telemetry stats (`?region=...`) |
+| `/api/radar/probe` | `POST` | Public | Trigger synthetic probe for specific colo (`?colo=...`) or all PoPs |
+| `/api/radar/route` | `GET/POST` | Public | Sub-millisecond Anycast route resolver (`?lat=...&lon=...&country=...`) |
+| `/api/radar/events` | `GET` | Public | Recent BGP route anomalies and autonomous migration journals |
+| `/api/radar/migrate` | `POST` | Public | Evacuate active leases from a specified degraded colo |
 | `/api/billing/summary` | `GET` | Public | Cluster cost summary, savings, and tenant/account aggregates |
 | `/api/billing/ledger` | `GET` | Public | Ledger export (`?format=json|csv|jsonl|opencost&tenant=...&limit=...`) |
 | `/api/billing/meter` | `POST` | Public | Ingest and attribute resource consumption record |

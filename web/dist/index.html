@@ -683,6 +683,114 @@ export default {
       <div id="billing-diag-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle);"></div>
     </section>
 
+    <!-- Intelligent Edge Health Radar & Anycast Geo-Routing (Milestone 11) -->
+    <section class="radar-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 16px; font-weight: 700; color: #fff;">Intelligent Edge Health Radar &amp; Anycast Geo-Routing</span>
+          <span id="radar-status-badge" style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 3px 10px; border-radius: 999px; font-weight: 600;">Active · 330+ Anycast Mesh</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="action-btn" onclick="triggerRadarProbeAll()" style="padding: 6px 12px; font-size: 11px; background: #0284c7;">Probe All PoPs</button>
+          <button class="action-btn" onclick="loadRadarState()" style="padding: 6px 12px; font-size: 11px; background: #475569;">Refresh Radar</button>
+        </div>
+      </div>
+
+      <!-- Telemetry Cards -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px;">
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Global Edge PoPs</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; color: #f8fafc; margin-top: 4px;" id="radar-pop-counts">-- Total</div>
+          <div style="font-size: 11px; color: #10b981; margin-top: 2px;" id="radar-health-ratio">-- Healthy · -- Degraded</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Global Average Latency</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; color: #38bdf8; margin-top: 4px;" id="radar-avg-rtt">-- ms</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Sub-millisecond Geo-Resolution</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">BGP Flap &amp; Proactive Migrations</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #fbbf24; margin-top: 4px;" id="radar-events-count">0 BGP Alerts · 0 Migrations</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Autonomous Packet-Loss Prevention</div>
+        </div>
+      </div>
+
+      <!-- Controls & PoP Radar Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+        <!-- Left: Interactive Anycast Geo-Routing Simulator -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">Anycast Geo-Routing Resolver Simulator</div>
+          <div style="display: flex; gap: 8px;">
+            <select id="radar-preset-country" onchange="applyRadarPreset()" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 12px; outline: none; flex-grow: 1;">
+              <option value="KR">Seoul, South Korea (KR)</option>
+              <option value="JP">Tokyo, Japan (JP)</option>
+              <option value="US">Washington DC / Ashburn (US)</option>
+              <option value="GB">London, United Kingdom (GB)</option>
+              <option value="DE">Frankfurt, Germany (DE)</option>
+              <option value="SG">Singapore (SG)</option>
+              <option value="AU">Sydney, Australia (AU)</option>
+              <option value="BR">Sao Paulo, Brazil (BR)</option>
+            </select>
+            <button class="action-btn" onclick="resolveRadarRoute()" style="padding: 6px 14px; font-size: 12px; background: #059669;">Resolve Colo</button>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="radar-client-lat" placeholder="Latitude (e.g. 37.56)" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 5px 8px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; width: 50%;">
+            <input type="text" id="radar-client-lon" placeholder="Longitude (e.g. 126.97)" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 5px 8px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; width: 50%;">
+          </div>
+          <div id="radar-route-result" style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); min-height: 80px;">
+            Select a location and click "Resolve Colo" to evaluate sub-millisecond anycast routing.
+          </div>
+        </div>
+
+        <!-- Right: Edge PoP Health Table & Region Tabs -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Edge Points of Presence (PoPs)</span>
+            <select id="radar-region-filter" onchange="loadRadarPoPs()" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px; outline: none;">
+              <option value="">All Regions</option>
+              <option value="Asia Pacific">Asia Pacific</option>
+              <option value="Europe">Europe</option>
+              <option value="North America">North America</option>
+              <option value="Latin America">Latin America</option>
+              <option value="Middle East & Africa">Middle East &amp; Africa</option>
+              <option value="Oceania">Oceania</option>
+            </select>
+          </div>
+          <div style="max-height: 180px; overflow-y: auto; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle);">
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono', monospace;">
+              <thead>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); color: var(--text-muted); text-align: left;">
+                  <th style="padding: 6px 10px;">Colo</th>
+                  <th style="padding: 6px 10px;">City</th>
+                  <th style="padding: 6px 10px; text-align: right;">RTT EMA</th>
+                  <th style="padding: 6px 10px; text-align: right;">Jitter</th>
+                  <th style="padding: 6px 10px; text-align: center;">Status</th>
+                </tr>
+              </thead>
+              <tbody id="radar-pops-tbody">
+                <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 12px;">Loading edge radar telemetry...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- BGP Flap Log & Dynamic Migration Stream -->
+      <div style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">BGP Route Anomalies &amp; Dynamic Lease Migrations</span>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="radar-migrate-from" placeholder="Colo to evacuate (e.g. IAD)" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; width: 170px;">
+            <button class="action-btn" onclick="triggerManualColoMigration()" style="padding: 4px 10px; font-size: 11px; background: #dc2626;">Evacuate Colo</button>
+          </div>
+        </div>
+        <div id="radar-events-stream" style="max-height: 110px; overflow-y: auto; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle); padding: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted);">
+          Listening for BGP latency anomalies and dynamic failovers...
+        </div>
+      </div>
+      <div id="radar-diag-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle);"></div>
+    </section>
+
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
       <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
@@ -902,6 +1010,7 @@ export default {
         }
 
         loadBillingState();
+        loadRadarState();
       } catch (err) {
         console.error('Failed to load state:', err);
       }
@@ -1875,6 +1984,186 @@ export default {
     function exportBilling(format) {
       window.open('/api/billing/ledger?format=' + encodeURIComponent(format), '_blank');
     }
+
+    const countryPresets = {
+      KR: { lat: 37.5665, lon: 126.9780 },
+      JP: { lat: 35.6762, lon: 139.6503 },
+      US: { lat: 38.8951, lon: -77.0364 },
+      GB: { lat: 51.5074, lon: -0.1278 },
+      DE: { lat: 50.1109, lon: 8.6821 },
+      SG: { lat: 1.3521, lon: 103.8198 },
+      AU: { lat: -33.8688, lon: 151.2093 },
+      BR: { lat: -23.5505, lon: -46.6333 }
+    };
+
+    function applyRadarPreset() {
+      const code = document.getElementById('radar-preset-country').value;
+      const coords = countryPresets[code];
+      if (coords) {
+        document.getElementById('radar-client-lat').value = coords.lat;
+        document.getElementById('radar-client-lon').value = coords.lon;
+      }
+    }
+
+    async function loadRadarState() {
+      try {
+        const [statusRes, eventsRes] = await Promise.all([
+          fetch('/api/radar/status').then(r => r.ok ? r.json() : null),
+          fetch('/api/radar/events').then(r => r.ok ? r.json() : null)
+        ]);
+
+        if (statusRes) {
+          const popCountsEl = document.getElementById('radar-pop-counts');
+          if (popCountsEl) popCountsEl.textContent = `${statusRes.total_pops} PoPs Monitored`;
+          const healthEl = document.getElementById('radar-health-ratio');
+          if (healthEl) healthEl.textContent = `${statusRes.healthy_pops} Healthy · ${statusRes.degraded_pops} Degraded · ${statusRes.offline_pops} Offline`;
+          const rttEl = document.getElementById('radar-avg-rtt');
+          if (rttEl) rttEl.textContent = `${statusRes.average_global_rtt_ms.toFixed(1)} ms`;
+          const evCountEl = document.getElementById('radar-events-count');
+          if (evCountEl) evCountEl.textContent = `${statusRes.recent_bgp_alerts} BGP Alerts · ${statusRes.total_migrations} Migrations`;
+        }
+
+        if (eventsRes) {
+          const streamEl = document.getElementById('radar-events-stream');
+          if (streamEl) {
+            const bgp = eventsRes.bgp_events || [];
+            const mig = eventsRes.migration_events || [];
+            if (bgp.length === 0 && mig.length === 0) {
+              streamEl.innerHTML = '<span style="color: #94a3b8;">Zero route flaps or packet loss detected across all edge PoPs. State converged.</span>';
+            } else {
+              let html = '';
+              bgp.slice(-4).reverse().forEach(ev => {
+                const color = ev.severity === 'critical' ? '#ef4444' : (ev.severity === 'warning' ? '#fbbf24' : '#38bdf8');
+                html += `<div style="margin-bottom: 4px;"><span style="color: ${color}; font-weight: 600;">[BGP ${ev.event_type.toUpperCase()}]</span> <strong style="color: #fff;">${escapeHtml(ev.colo)}</strong>: ${escapeHtml(ev.message)} <span style="color: #64748b;">(${new Date(ev.timestamp).toLocaleTimeString()})</span></div>`;
+              });
+              mig.slice(-4).reverse().forEach(m => {
+                html += `<div style="margin-bottom: 4px;"><span style="color: #10b981; font-weight: 600;">[DYNAMIC MIGRATION]</span> Lease <code>${escapeHtml(m.lease_id)}</code> migrated <strong>${escapeHtml(m.from_colo)} ➔ ${escapeHtml(m.to_colo)}</strong>: ${escapeHtml(m.reason)}</div>`;
+              });
+              streamEl.innerHTML = html;
+            }
+          }
+        }
+      } catch (_) {}
+
+      loadRadarPoPs();
+    }
+
+    async function loadRadarPoPs() {
+      try {
+        const filter = document.getElementById('radar-region-filter').value;
+        const url = '/api/radar/pops' + (filter ? `?region=${encodeURIComponent(filter)}` : '');
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const pops = await res.json();
+        const tbody = document.getElementById('radar-pops-tbody');
+        if (!tbody) return;
+
+        if (!Array.isArray(pops) || pops.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 12px;">No PoPs found for region.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = pops.map(p => {
+          const st = p.stats || {};
+          const rtt = (st.ema_rtt_ms || 0).toFixed(1);
+          const jitter = (st.jitter_ms || 0).toFixed(1);
+          let healthColor = '#10b981';
+          if (st.health === 'degraded') healthColor = '#fbbf24';
+          if (st.health === 'offline') healthColor = '#ef4444';
+          return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+              <td style="padding: 6px 10px;"><strong style="color: #38bdf8;">${escapeHtml(p.iata)}</strong></td>
+              <td style="padding: 6px 10px; color: #f8fafc;">${escapeHtml(p.city)}, ${escapeHtml(p.country)}</td>
+              <td style="padding: 6px 10px; text-align: right; color: #10b981;">${rtt} ms</td>
+              <td style="padding: 6px 10px; text-align: right; color: #94a3b8;">±${jitter} ms</td>
+              <td style="padding: 6px 10px; text-align: center;"><span style="color: ${healthColor}; font-weight: 600; text-transform: uppercase;">${escapeHtml(st.health || 'healthy')}</span></td>
+            </tr>
+          `;
+        }).join('');
+      } catch (_) {}
+    }
+
+    async function resolveRadarRoute() {
+      const lat = parseFloat(document.getElementById('radar-client-lat').value) || 0;
+      const lon = parseFloat(document.getElementById('radar-client-lon').value) || 0;
+      const country = document.getElementById('radar-preset-country').value;
+      const resBox = document.getElementById('radar-route-result');
+      resBox.innerHTML = 'Evaluating Anycast composite scores across global edge PoPs...';
+
+      try {
+        const res = await fetch('/api/radar/route', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat, lon, country, tenant_id: 'cf-tenant-alpha' })
+        });
+        const rec = await res.json();
+        if (!res.ok) {
+          resBox.innerHTML = `<span style="color: #ef4444;">Resolution Error: ${escapeHtml(rec.error || res.statusText)}</span>`;
+          return;
+        }
+
+        const failoverBadge = rec.degraded_failover ? '<span style="color: #fbbf24; font-weight: 700;">[FAILOVER FROM DEGRADED PRIMARY]</span> ' : '';
+        resBox.innerHTML = `
+          <div style="color: #10b981; font-weight: 700; margin-bottom: 4px;">
+            ${failoverBadge}Optimal Edge Colo: <span style="color: #38bdf8; font-size: 13px;">${escapeHtml(rec.colo)}</span> (${escapeHtml(rec.city)}, ${escapeHtml(rec.country)})
+          </div>
+          <div style="display: flex; gap: 14px; margin-bottom: 4px; font-size: 11px;">
+            <span>Great-Circle Distance: <strong>${rec.distance_km} km</strong></span>
+            <span>Est. Latency RTT: <strong style="color: #10b981;">${rec.estimated_rtt_ms} ms</strong></span>
+            <span>Composite Score: <strong>${rec.composite_score}</strong></span>
+          </div>
+          <div style="font-size: 10px; color: #94a3b8;">
+            Resolved in <strong>${rec.resolution_duration_us} &micro;s</strong> (Sub-millisecond) · Standby Alternative: <strong>${escapeHtml(rec.alternative_colo || 'None')}</strong>
+          </div>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function triggerRadarProbeAll() {
+      const diag = document.getElementById('radar-diag-result');
+      diag.style.display = 'block';
+      diag.textContent = 'Dispatching concurrent synthetic probes across all Cloudflare edge PoPs...';
+      try {
+        const res = await fetch('/api/radar/probe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ concurrency: 10 })
+        });
+        const data = await res.json();
+        diag.innerHTML = `<span style="color: #10b981; font-weight: 600;">Probe Complete:</span> Dispatched to ${data.probed_count} edge PoPs. Telemetry converged.`;
+        loadRadarState();
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #ef4444;">Probe Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function triggerManualColoMigration() {
+      const fromColo = document.getElementById('radar-migrate-from').value.trim();
+      const diag = document.getElementById('radar-diag-result');
+      if (!fromColo) {
+        alert('Please specify an IATA colo code to evacuate (e.g. IAD)');
+        return;
+      }
+      diag.style.display = 'block';
+      diag.textContent = `Evacuating active leases from colo ${fromColo.toUpperCase()}...`;
+
+      try {
+        const res = await fetch('/api/radar/migrate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from_colo: fromColo, reason: 'Operator evacuation' })
+        });
+        const data = await res.json();
+        diag.innerHTML = `<span style="color: #10b981; font-weight: 600;">Migration Complete:</span> ${data.migrated_leases} leases evacuated to standby colos.`;
+        loadRadarState();
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #ef4444;">Migration Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    applyRadarPreset();
 
     loadState();
     setInterval(loadState, 2000);
