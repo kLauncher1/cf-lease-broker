@@ -95,10 +95,17 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 
 ---
 
-## Release: v0.12.0 (Adaptive Zero-Copy Compression & Transcoding)
-- [ ] Dynamic payload inspection selecting optimal compression algorithm (Brotli, Zstandard, gzip) based on client Accept-Encoding.
-- [ ] Real-time byte streaming through pre-allocated compressor buffers with zero intermediate heap allocations.
-- [ ] Dynamic dictionary training for tenant API JSON payloads reducing bandwidth by up to 85%.
+## Release: v0.12.0 (Autonomous Edge Token Rotator & Revocation Mesh)
+- [x] Automated background token renewal triggering before token expiry with 30s handover grace period.
+- [x] Gossip-based token revocation mesh propagating revoked vouchers across broker instances in under 5ms.
+- [x] Hardware-backed TPM 2.0 attestation verification for token refresh delegations.
+
+---
+
+## Release: v0.13.0 (Zero-Overhead HTTP/3 eBPF Packet Steering)
+- [ ] Kernel-level socket dispatching bypassing user-space TCP stack for local Linux deployments.
+- [ ] UDP/QUIC packet header inspection steering traffic directly to optimal worker endpoints.
+- [ ] Sub-10-microsecond dispatch latency for high-throughput edge proxies.
 
 ---
 

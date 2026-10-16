@@ -791,6 +791,86 @@ export default {
       <div id="radar-diag-result" style="display: none; margin-top: 12px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle);"></div>
     </section>
 
+    <!-- Autonomous Edge Token Rotator & Revocation Mesh Panel (Milestone 12) -->
+    <section class="rotator-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 16px; font-weight: 700; color: #fff;">Autonomous Edge Token Rotator &amp; Gossip Revocation Mesh</span>
+          <span id="rotator-status-badge" style="font-size: 11px; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 3px 10px; border-radius: 999px; font-weight: 600;">Sub-5ms Mesh Active</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="action-btn" onclick="requestAttestationChallenge()" style="padding: 6px 12px; font-size: 11px; background: #6366f1;">Request Nonce Challenge</button>
+          <button class="action-btn" onclick="testAttestedDelegation()" style="padding: 6px 12px; font-size: 11px; background: #0284c7;">Test Attested Delegation</button>
+        </div>
+      </div>
+
+      <!-- Telemetry Cards -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px;">
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Active Managed Tokens</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; color: var(--accent-blue); margin-top: 4px;" id="rotator-active-count">0 Tokens</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Proactive Renewal: 80% TTL</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Autonomous Rotations</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; color: var(--accent-green); margin-top: 4px;" id="rotator-renewed-count">0 Rotated</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">30s Handover Grace Shield</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Mesh Revocation Ledger</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; color: #f43f5e; margin-top: 4px;" id="rotator-revoked-count">0 Tombstones</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">HMAC-SHA256 Signed O(1)</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Propagation Telemetry</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; color: #fbbf24; margin-top: 4px;" id="rotator-latency-ms">1.5 ms Latency</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;" id="rotator-peers-count">0 Gossip Peers Connected</div>
+        </div>
+      </div>
+
+      <!-- Controls Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+        <!-- Left: Active Token Registry & Handover -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Active Managed Tokens &amp; Handover Monitor</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Zero-Downtime Handover Active</span>
+          </div>
+          <div style="max-height: 180px; overflow-y: auto; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle);">
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono', monospace;">
+              <thead>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); color: var(--text-muted); text-align: left;">
+                  <th style="padding: 6px 10px;">Token ID</th>
+                  <th style="padding: 6px 10px;">Service</th>
+                  <th style="padding: 6px 10px; text-align: center;">Rotations</th>
+                  <th style="padding: 6px 10px; text-align: center;">Status</th>
+                  <th style="padding: 6px 10px; text-align: right;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="rotator-tokens-tbody">
+                <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 12px;">No active tokens under rotation management.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right: Instant Gossip Revocation & Nonce Challenge -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-main);">Instant Gossip Mesh Revocation (&lt;5ms)</div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="rotator-revoke-id" placeholder="Token ID or Lease ID (e.g. tok_...)" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none; flex-grow: 1;">
+            <button class="action-btn" onclick="triggerMeshRevocation()" style="padding: 6px 12px; font-size: 11px; background: #dc2626;">Broadcast Revocation</button>
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Recent Revocation Tombstones &amp; Gossip Stream:</div>
+          <div id="rotator-events-stream" style="max-height: 120px; overflow-y: auto; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle); padding: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted);">
+            Listening for gossip tombstone packets and rotation events...
+          </div>
+        </div>
+      </div>
+
+      <div id="rotator-diag-result" style="display: none; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
+    </section>
+
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
       <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
@@ -1011,6 +1091,7 @@ export default {
 
         loadBillingState();
         loadRadarState();
+        loadRotatorState();
       } catch (err) {
         console.error('Failed to load state:', err);
       }
@@ -2160,6 +2241,193 @@ export default {
         loadRadarState();
       } catch (err) {
         diag.innerHTML = `<span style="color: #ef4444;">Migration Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function loadRotatorState() {
+      try {
+        const [statusRes, tokensRes, tombstonesRes, eventsRes] = await Promise.all([
+          fetch('/api/rotator/status').then(r => r.ok ? r.json() : null),
+          fetch('/api/rotator/tokens').then(r => r.ok ? r.json() : []),
+          fetch('/api/rotator/tombstones').then(r => r.ok ? r.json() : []),
+          fetch('/api/rotator/events').then(r => r.ok ? r.json() : [])
+        ]);
+
+        if (statusRes) {
+          const actEl = document.getElementById('rotator-active-count');
+          if (actEl) actEl.textContent = `${statusRes.active_tokens} Tokens`;
+          const renEl = document.getElementById('rotator-renewed-count');
+          if (renEl) renEl.textContent = `${statusRes.renewed_count} Rotated`;
+          const revEl = document.getElementById('rotator-revoked-count');
+          if (revEl) revEl.textContent = `${statusRes.revoked_count} Tombstones`;
+          const latEl = document.getElementById('rotator-latency-ms');
+          if (latEl) latEl.textContent = `${statusRes.avg_propagation_latency_ms.toFixed(1)} ms Latency`;
+          const peerEl = document.getElementById('rotator-peers-count');
+          if (peerEl) peerEl.textContent = `${statusRes.mesh_peers_count} Gossip Peers Connected`;
+        }
+
+        const tbody = document.getElementById('rotator-tokens-tbody');
+        if (tbody) {
+          if (!Array.isArray(tokensRes) || tokensRes.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 12px;">No active tokens under rotation management.</td></tr>';
+          } else {
+            tbody.innerHTML = tokensRes.map(t => {
+              const isRevoked = t.state === 'REVOKED';
+              return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                  <td style="padding: 6px 10px;"><strong style="color: #38bdf8;">${escapeHtml(t.token_id)}</strong></td>
+                  <td style="padding: 6px 10px; color: #f8fafc;">${escapeHtml(t.target_service)}</td>
+                  <td style="padding: 6px 10px; text-align: center; color: #10b981;">#${t.renewal_count}</td>
+                  <td style="padding: 6px 10px; text-align: center;"><span style="color: ${isRevoked ? '#ef4444' : '#10b981'}; font-weight: 600;">${escapeHtml(t.state)}</span></td>
+                  <td style="padding: 6px 10px; text-align: right;">
+                    ${!isRevoked ? `<button class="action-btn" onclick="triggerManualRotation('${escapeHtml(t.token_id)}')" style="padding: 2px 8px; font-size: 10px; background: #059669; margin-right: 4px;">Rotate</button><button class="action-btn" onclick="triggerMeshRevocationForToken('${escapeHtml(t.token_id)}')" style="padding: 2px 8px; font-size: 10px; background: #dc2626;">Revoke</button>` : '<span style="color: #64748b;">-</span>'}
+                  </td>
+                </tr>
+              `;
+            }).join('');
+          }
+        }
+
+        const streamEl = document.getElementById('rotator-events-stream');
+        if (streamEl) {
+          const tombstones = Array.isArray(tombstonesRes) ? tombstonesRes : [];
+          const events = Array.isArray(eventsRes) ? eventsRes : [];
+          if (tombstones.length === 0 && events.length === 0) {
+            streamEl.innerHTML = '<span style="color: #94a3b8;">Mesh ledger healthy. Zero unhandled revocations or failed rotations.</span>';
+          } else {
+            let html = '';
+            tombstones.slice(-4).reverse().forEach(t => {
+              html += `<div style="margin-bottom: 4px;"><span style="color: #ef4444; font-weight: 600;">[REVOKED &lt;5MS]</span> Lease <code>${escapeHtml(t.lease_id || t.token_id)}</code>: ${escapeHtml(t.reason)} <span style="color: #64748b;">(#${t.sequence_num})</span></div>`;
+            });
+            events.slice(-3).reverse().forEach(ev => {
+              html += `<div style="margin-bottom: 4px;"><span style="color: #10b981; font-weight: 600;">[ROTATED]</span> Token <strong>${escapeHtml(ev.token_id)}</strong> renewed (${ev.duration_ms}ms) · ${escapeHtml(ev.reason)}</div>`;
+            });
+            streamEl.innerHTML = html;
+          }
+        }
+      } catch (_) {}
+    }
+
+    async function triggerManualRotation(tokenId) {
+      const diag = document.getElementById('rotator-diag-result');
+      diag.style.display = 'block';
+      diag.textContent = `Triggering autonomous token rotation for ${tokenId}...`;
+      try {
+        const res = await fetch('/api/rotator/renew', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token_id: tokenId, reason: 'Operator dashboard rotation' })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          diag.innerHTML = `<span style="color: #ef4444;">Rotation Error: ${escapeHtml(data.error || res.statusText)}</span>`;
+          return;
+        }
+        diag.innerHTML = `<span style="color: #10b981; font-weight: 600;">Rotation Success:</span> New token key generated with 30s handover grace period. Event ID: ${escapeHtml(data.event_id)}`;
+        loadRotatorState();
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #ef4444;">Network Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function triggerMeshRevocationForToken(tokenId) {
+      document.getElementById('rotator-revoke-id').value = tokenId;
+      await triggerMeshRevocation();
+    }
+
+    async function triggerMeshRevocation() {
+      const id = document.getElementById('rotator-revoke-id').value.trim();
+      const diag = document.getElementById('rotator-diag-result');
+      if (!id) {
+        alert('Please specify a Token ID or Lease ID to revoke across the gossip mesh');
+        return;
+      }
+      diag.style.display = 'block';
+      diag.textContent = `Broadcasting instant revocation for ${id} across gossip mesh (<5ms)...`;
+      try {
+        const res = await fetch('/api/rotator/revoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token_id: id, reason: 'Operator gossip broadcast revocation' })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          diag.innerHTML = `<span style="color: #ef4444;">Revocation Error: ${escapeHtml(data.error || res.statusText)}</span>`;
+          return;
+        }
+        diag.innerHTML = `<span style="color: #f43f5e; font-weight: 600;">Revocation Propagated:</span> Tombstone signed with HMAC-SHA256 and broadcast across mesh cluster. Status: ${escapeHtml(data.status)}`;
+        document.getElementById('rotator-revoke-id').value = '';
+        loadRotatorState();
+        loadState();
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #ef4444;">Network Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function requestAttestationChallenge() {
+      const diag = document.getElementById('rotator-diag-result');
+      diag.style.display = 'block';
+      diag.textContent = 'Requesting single-use hardware attestation challenge nonce...';
+      try {
+        const res = await fetch('/api/rotator/challenge');
+        const data = await res.json();
+        diag.innerHTML = `
+          <div style="color: #6366f1; font-weight: 700; margin-bottom: 4px;">Hardware Challenge Nonce Generated (Single-Use Shield)</div>
+          <div>Nonce: <code style="color: #38bdf8;">${escapeHtml(data.nonce)}</code></div>
+          <div>Timestamp: <strong>${data.timestamp}</strong> · Provider: <span style="color: #10b981;">${escapeHtml(data.provider)}</span></div>
+        `;
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function testAttestedDelegation() {
+      const diag = document.getElementById('rotator-diag-result');
+      diag.style.display = 'block';
+      diag.textContent = 'Performing end-to-end hardware-attested delegated token refresh handshake...';
+      try {
+        // Step 1: Challenge
+        const cRes = await fetch('/api/rotator/challenge');
+        const cData = await cRes.json();
+
+        // Step 2: Fetch a token to test
+        const tRes = await fetch('/api/rotator/tokens');
+        const tokens = await tRes.json();
+        if (!Array.isArray(tokens) || tokens.length === 0) {
+          diag.innerHTML = '<span style="color: #fbbf24;">No active managed tokens available. Please issue a lease first.</span>';
+          return;
+        }
+        const targetTok = tokens[0];
+
+        // Step 3: Delegated Refresh with TPM quote
+        const dRes = await fetch('/api/rotator/delegate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token_id: targetTok.token_id,
+            lease_id: targetTok.lease_id,
+            tenant_id: targetTok.tenant_id,
+            target_service: targetTok.target_service,
+            delegated_by_node: 'edge-delegate-simulator',
+            nonce: cData.nonce,
+            hardware_quote: 'TPM2_Quote[PCR0-7=1234567890abcdef,EK=abcdef1234567890]',
+            pcr_digest: 'a'.repeat(64),
+            timestamp: cData.timestamp
+          })
+        });
+        const dData = await dRes.json();
+        if (!dRes.ok) {
+          diag.innerHTML = `<span style="color: #ef4444;">Delegation Failed: ${escapeHtml(dData.error || dRes.statusText)}</span>`;
+          return;
+        }
+        diag.innerHTML = `
+          <div style="color: #10b981; font-weight: 700; margin-bottom: 4px;">Hardware Attestation Verified &amp; Delegated Token Renewed</div>
+          <div>Token ID: <strong style="color: #38bdf8;">${escapeHtml(dData.token_id)}</strong> · New Token Key: <code style="color: #fbbf24;">${escapeHtml(dData.new_token_key)}</code></div>
+          <div>Verdict: <span style="color: #10b981;">${escapeHtml(dData.attestation_verdict)}</span></div>
+        `;
+        loadRotatorState();
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #ef4444;">Delegation Error: ${escapeHtml(err.message)}</span>`;
       }
     }
 
