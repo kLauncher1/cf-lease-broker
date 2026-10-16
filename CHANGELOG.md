@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-10-16
+
+### Added
+- **Autonomous Edge Token Rotator**: Implemented `internal/rotator/rotator.go` and `internal/rotator/types.go` supporting background lifecycle monitoring, proactive renewal triggering at 80% of token validity, zero-downtime dual-token validity during a 30-second handover grace period, and automatic lease voucher synchronization with the pool manager.
+- **Sub-5ms Gossip-Based Token Revocation Mesh**: Implemented `internal/rotator/mesh.go` featuring a decentralized tombstone ledger with O(1) revocation lookups, HMAC-SHA256 tamper-proof signed revocation tombstones, monotonic sequence numbering, anti-entropy state synchronization, and low-latency peer-to-peer broadcast achieving sub-5ms propagation across broker cluster nodes.
+- **Hardware-Backed TPM 2.0 Attestation for Delegated Refresh**: Implemented `internal/rotator/attest.go` providing cryptographic platform integrity verification for delegated token refresh requests, single-use challenge nonces with expiration tracking to prevent replay attacks, constant-time HMAC tag verification, and validation of Platform Configuration Register (PCR) digests.
+- **Rotator & Mesh REST API Endpoints**: Implemented `internal/rotator/handler.go` mounting `/api/rotator/*` routes in `main.go`, exposing `/api/rotator/status`, `/api/rotator/tokens`, `/api/rotator/renew`, `/api/rotator/revoke`, `/api/rotator/gossip`, `/api/rotator/delegate`, `/api/rotator/challenge`, `/api/rotator/tombstones`, `/api/rotator/peers`, and `/api/rotator/events` with strict 64KB request body bounding against buffer exhaustion attacks.
+- **Interactive Glassmorphism Rotator & Mesh Dashboard Panel**: Enhanced `web/dist/index.html` with an embedded glassmorphism management panel featuring active token counters, autonomous rotation meters, real-time revocation tombstone streams, instant gossip broadcast triggers, and interactive hardware attestation delegation simulators.
+- **Comprehensive Rotator Unit & Integration Test Suite**: Added 9 unit and integration tests in `internal/rotator/rotator_test.go` covering renewal threshold calculations, background ticker renewals, grace period dual-token validation, sub-5ms mesh propagation, anti-entropy deduplication, hardware attestation quote verification, nonce replay defenses, REST API handlers, 64KB body bounding, and 40-goroutine concurrent execution.
+
+### Changed
+- Mounted `/api/rotator/` routes on HTTP mux and initialized `RevocationMesh`, `AttestationVerifier`, `TokenRotator`, and `RotatorHandler` in `main.go`.
+- Synchronized lease granting and revoking in `main.go` to automatically register new vouchers and broadcast revocations across the mesh.
+- Bumped application version to `0.12.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.11.0] - 2026-10-16
 
 ### Added

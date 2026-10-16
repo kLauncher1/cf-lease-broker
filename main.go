@@ -22,13 +22,14 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/quota"
 	"github.com/kLauncher1/cf-lease-broker/internal/radar"
 	"github.com/kLauncher1/cf-lease-broker/internal/raft"
+	"github.com/kLauncher1/cf-lease-broker/internal/rotator"
 	"github.com/kLauncher1/cf-lease-broker/internal/security"
 	"github.com/kLauncher1/cf-lease-broker/internal/storage"
 )
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.11.0"
+	Version = "0.12.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -244,6 +245,14 @@ export default {
 		return rec.Colo, rec.DistanceKm
 	})
 
+	// Autonomous Edge Token Rotator & Revocation Mesh (Milestone 12)
+	rotatorMesh := rotator.NewRevocationMesh("broker-node-"+port, []byte(os.Getenv("CF_BROKER_GOSSIP_SECRET")))
+	attestVerifier := rotator.NewAttestationVerifier([]byte(os.Getenv("CF_BROKER_ATTEST_SECRET")))
+	tokenRotator := rotator.NewTokenRotator(rotator.DefaultRotatorConfig(), rotatorMesh, leaseEng, attestVerifier)
+	tokenRotator.Start()
+	defer tokenRotator.Stop()
+	rotatorHandler := rotator.NewRotatorHandler(tokenRotator, rotatorMesh, attestVerifier)
+
 	// Seed encrypted credentials for pooled accounts into vault and poolMgr
 	for _, acc := range activeConfig.Accounts {
 		poolMgr.UpsertAccount(acc.ToAccountStatus())
@@ -335,6 +344,10 @@ export default {
 	mux.Handle("/api/radar/", radarHandler)
 	mux.Handle("/api/radar", radarHandler)
 
+	// Autonomous Edge Token Rotator & Revocation Mesh (/api/rotator/*)
+	mux.Handle("/api/rotator/", rotatorHandler)
+	mux.Handle("/api/rotator", rotatorHandler)
+
 	// Authentication & JWT Management Endpoints
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
 	mux.HandleFunc("/api/auth/revoke", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleRevokeToken)).ServeHTTP)
@@ -372,6 +385,7 @@ export default {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			tokenRotator.RegisterVoucher(*voucher)
 			if raftNode.Status().Role == raft.RoleLeader {
 				vBytes, _ := json.Marshal(voucher)
 				_, _ = raftNode.Propose(raft.CmdGrantLease, vBytes)
@@ -394,9 +408,12 @@ export default {
 			http.Error(w, "missing id query parameter", http.StatusBadRequest)
 			return
 		}
-		if err := leaseEng.RevokeLease(id); err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
+		if err := tokenRotator.RevokeToken(id, "operator_api_revocation"); err != nil {
+			if err := leaseEng.RevokeLease(id); err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			rotatorMesh.Revoke(id, "", "operator_api_revocation")
 		}
 		if raftNode.Status().Role == raft.RoleLeader {
 			rBytes, _ := json.Marshal(raft.RevokeLeasePayload{LeaseID: id})
@@ -438,6 +455,7 @@ export default {
 	fmt.Println(" 🛡️ Zero-Trust Mutual TLS (mTLS) & Hardware Attestation Active (/api/mtls/*)")
 	fmt.Println(" 💰 Autonomous Cost Optimization & Multi-Tenant Billing Ledger Active (/api/billing/*)")
 	fmt.Println(" 🛰️ Intelligent Edge Health Radar & Anycast Geo-Routing Active (/api/radar/*)")
+	fmt.Println(" 🔄 Autonomous Edge Token Rotator & Revocation Mesh Active (/api/rotator/*)")
 	fmt.Println(" 💡 Standalone Single Binary with Embedded Zero-Dependency UI")
 	fmt.Println("=================================================================")
 
