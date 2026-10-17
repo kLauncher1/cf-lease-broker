@@ -953,6 +953,110 @@ export default {
       <div id="steering-diag-result" style="display: none; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
     </section>
 
+    <!-- Edge Wasm Sandbox Memory Limiter & Crash Isolation Panel -->
+    <section class="sandbox-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 16px; font-weight: 700; color: #fff;">Edge Wasm Sandbox Memory Limiter &amp; Crash Isolation</span>
+          <span id="sandbox-status-badge" style="font-size: 11px; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 3px 10px; border-radius: 999px; font-weight: 600;">Hardware Boundary Active</span>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button class="action-btn" onclick="fetchSandboxDiagnostics()" style="padding: 6px 14px; font-size: 12px; background: rgba(255,255,255,0.06);">Dump Diagnostics</button>
+          <button class="action-btn" onclick="clearCrashJournal()" style="padding: 6px 14px; font-size: 12px; background: rgba(239,68,68,0.15); color: #ef4444;">Clear Journal</button>
+        </div>
+      </div>
+
+      <!-- Telemetry Counters -->
+      <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 20px;">
+        <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Active Sandboxes</div>
+          <div id="sandbox-active-count" style="font-size: 20px; font-weight: 700; color: #38bdf8; margin-top: 4px;">0</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Multi-Tenant Containers</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Memory Hard Ceiling</div>
+          <div id="sandbox-ceiling-mb" style="font-size: 20px; font-weight: 700; color: #fbbf24; margin-top: 4px;">32 MiB</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">512 Wasm Pages Cap</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">OOM Interceptions</div>
+          <div id="sandbox-oom-count" style="font-size: 20px; font-weight: 700; color: #f43f5e; margin-top: 4px;">0</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Over-Allocation Blocked</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Panic Recoveries</div>
+          <div id="sandbox-panic-count" style="font-size: 20px; font-weight: 700; color: #10b981; margin-top: 4px;">0</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Zero Host Termination</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Total Gas Debited</div>
+          <div id="sandbox-gas-total" style="font-size: 20px; font-weight: 700; color: #a855f7; margin-top: 4px;">0</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Deterministic Accounting</div>
+        </div>
+      </div>
+
+      <!-- Tenant Sandboxes & Execution Tester Layout -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+        <!-- Left: Tenant Sandbox Quotas & Instances -->
+        <div style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Tenant Isolation Policies &amp; Quotas</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Zero-Trust Partitioning</span>
+          </div>
+          <div style="max-height: 170px; overflow-y: auto; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle);">
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono', monospace;">
+              <thead>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); color: var(--text-muted); text-align: left;">
+                  <th style="padding: 6px 10px;">Tenant ID</th>
+                  <th style="padding: 6px 10px;">Max Pages</th>
+                  <th style="padding: 6px 10px;">Gas Limit</th>
+                  <th style="padding: 6px 10px; text-align: center;">Status</th>
+                  <th style="padding: 6px 10px; text-align: right;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="sandbox-tenants-tbody">
+                <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 12px;">Loading tenant policies...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right: Interactive Wasm Execution Tester -->
+        <div style="display: flex; flex-direction: column; gap: 10px; background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Interactive Wasm Execution &amp; Fault Injection</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Host-Protected Micro-Interpreter</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <select id="sandbox-exec-preset" onchange="applySandboxPreset()" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 11px; outline: none;">
+              <option value="compute" selected>Normal Compute (Math &amp; MemStore)</option>
+              <option value="infinite_loop">Infinite Loop (Gas Exhaustion Trap)</option>
+              <option value="memory_alloc">Memory Alloc (32MB OOM Limit)</option>
+              <option value="panic_fault">Panic Fault (SIGSEGV Trapped)</option>
+            </select>
+            <input type="text" id="sandbox-tenant-input" placeholder="Tenant ID" value="tenant-edge-prod" style="width: 130px; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none;">
+            <button class="action-btn" onclick="executeSandboxPayload()" style="padding: 6px 14px; font-size: 11px; background: #059669; white-space: nowrap;">Run In Sandbox</button>
+          </div>
+          <div id="sandbox-exec-result" style="max-height: 115px; overflow-y: auto; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle); padding: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted);">
+            Ready to execute guest bytecode payload under strict memory and gas boundaries...
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Crash Journal Log with Recovered Stack Traces -->
+      <div style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Live Crash Journal (Recent Trapped Faults &amp; Recovered Stacks)</span>
+          <span style="font-size: 11px; color: #10b981; font-weight: 600;">Host Broker Health: 100% Intact</span>
+        </div>
+        <div id="sandbox-crash-journal" style="max-height: 140px; overflow-y: auto; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle); padding: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted);">
+          No faults trapped yet. All sandboxes operating within bounds.
+        </div>
+      </div>
+
+      <div id="sandbox-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
+    </section>
+
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
       <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
@@ -1175,6 +1279,7 @@ export default {
         loadRadarState();
         loadRotatorState();
         loadSteeringState();
+        loadSandboxState();
       } catch (err) {
         console.error('Failed to load state:', err);
       }
@@ -2628,7 +2733,184 @@ export default {
       }
     }
 
+    async function loadSandboxState() {
+      try {
+        const [statusRes, tenantsRes, crashesRes] = await Promise.all([
+          fetch('/api/sandbox/status').then(r => r.json()).catch(() => null),
+          fetch('/api/sandbox/tenants').then(r => r.json()).catch(() => []),
+          fetch('/api/sandbox/crashes?limit=10').then(r => r.json()).catch(() => [])
+        ]);
+
+        if (statusRes && statusRes.stats) {
+          const s = statusRes.stats;
+          const actEl = document.getElementById('sandbox-active-count');
+          if (actEl) actEl.textContent = s.active_sandboxes || 0;
+
+          const ceilEl = document.getElementById('sandbox-ceiling-mb');
+          if (ceilEl) ceilEl.textContent = `${(s.hard_ceiling_bytes / (1024 * 1024)).toFixed(0)} MiB (${s.hard_ceiling_pages}p)`;
+
+          const oomEl = document.getElementById('sandbox-oom-count');
+          if (oomEl) oomEl.textContent = s.oom_interceptions || 0;
+
+          const panicEl = document.getElementById('sandbox-panic-count');
+          if (panicEl) panicEl.textContent = s.panic_recoveries || 0;
+
+          const gasEl = document.getElementById('sandbox-gas-total');
+          if (gasEl) gasEl.textContent = Number(s.gas_consumed_total || 0).toLocaleString();
+        }
+
+        const tbody = document.getElementById('sandbox-tenants-tbody');
+        if (tbody && Array.isArray(tenantsRes)) {
+          if (tenantsRes.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 10px;">Default dynamic tenant policy active</td></tr>`;
+          } else {
+            tbody.innerHTML = tenantsRes.map(t => `
+              <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                <td style="padding: 6px 10px; color: #fff; font-weight: 600;">${escapeHtml(t.tenant_id)}</td>
+                <td style="padding: 6px 10px; color: #fbbf24;">${t.max_memory_pages} pages (${(t.max_memory_pages * 64 / 1024).toFixed(1)} MB)</td>
+                <td style="padding: 6px 10px; color: #38bdf8;">${Number(t.gas_limit).toLocaleString()}</td>
+                <td style="padding: 6px 10px; text-align: center;">
+                  <span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; ${t.quarantined ? 'background: rgba(239,68,68,0.2); color: #ef4444;' : 'background: rgba(16,185,129,0.15); color: #10b981;'}">
+                    ${t.quarantined ? 'QUARANTINED' : 'HEALTHY'}
+                  </span>
+                </td>
+                <td style="padding: 6px 10px; text-align: right;">
+                  <button onclick="resetTenantSandbox('${escapeHtml(t.tenant_id)}')" style="background: none; border: 1px solid var(--border-subtle); color: #38bdf8; font-size: 10px; padding: 2px 6px; border-radius: 4px; cursor: pointer;">Reset</button>
+                </td>
+              </tr>
+            `).join('');
+          }
+        }
+
+        const journalBox = document.getElementById('sandbox-crash-journal');
+        if (journalBox && Array.isArray(crashesRes)) {
+          if (crashesRes.length === 0) {
+            journalBox.innerHTML = '<span style="color: #10b981;">No runtime faults trapped yet. All guest sandboxes executing normally.</span>';
+          } else {
+            journalBox.innerHTML = crashesRes.map(c => `
+              <div style="border-bottom: 1px solid rgba(255,255,255,0.06); padding: 6px 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span><strong style="color: #ef4444;">${escapeHtml(c.crash_id)}</strong> · Tenant: <span style="color: #fff;">${escapeHtml(c.tenant_id)}</span></span>
+                  <span style="background: rgba(16,185,129,0.2); color: #10b981; font-size: 10px; padding: 2px 6px; border-radius: 4px;">Host Isolated &amp; Recovered</span>
+                </div>
+                <div style="color: #f87171; margin-top: 2px; font-size: 11px;">${escapeHtml(c.reason)}</div>
+                <div style="color: #94a3b8; font-size: 10px; margin-top: 2px;">Memory: ${c.memory_pages} pages (${(c.memory_bytes/1024).toFixed(0)} KB) · Gas Used: ${Number(c.gas_used).toLocaleString()} · ${new Date(c.timestamp).toLocaleTimeString()}</div>
+              </div>
+            `).join('');
+          }
+        }
+      } catch (err) {
+        console.error('loadSandboxState error:', err);
+      }
+    }
+
+    function applySandboxPreset() {
+      const preset = document.getElementById('sandbox-exec-preset').value;
+      const resBox = document.getElementById('sandbox-exec-result');
+      if (preset === 'compute') {
+        resBox.textContent = 'Ready: will perform math operations and write results to linear memory.';
+      } else if (preset === 'infinite_loop') {
+        resBox.textContent = 'Ready: will test infinite loop trap via deterministic gas exhaustion.';
+      } else if (preset === 'memory_alloc') {
+        resBox.textContent = 'Ready: will test memory allocation attempting to breach 32MB physical ceiling.';
+      } else if (preset === 'panic_fault') {
+        resBox.textContent = 'Ready: will test SIGSEGV null pointer dereference trap and host isolation.';
+      }
+    }
+
+    async function executeSandboxPayload() {
+      const preset = document.getElementById('sandbox-exec-preset').value;
+      const tenant = document.getElementById('sandbox-tenant-input').value.trim() || 'tenant-edge-prod';
+      const resBox = document.getElementById('sandbox-exec-result');
+      resBox.innerHTML = 'Submitting workload to guest Wasm sandbox...';
+
+      let requestedPages = 0;
+      let gasBudget = 1000000;
+      if (preset === 'memory_alloc') {
+        requestedPages = 600;
+      } else if (preset === 'infinite_loop') {
+        gasBudget = 5000;
+      }
+
+      try {
+        const res = await fetch('/api/sandbox/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenant_id: tenant,
+            instance_id: 'inst-live',
+            payload_type: preset,
+            gas_budget: gasBudget,
+            requested_pages: requestedPages
+          })
+        });
+
+        const data = await res.json();
+        const isFault = res.status !== 200 || data.status === 'CRASHED' || data.error;
+
+        resBox.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="font-weight: 700; color: ${isFault ? '#ef4444' : '#10b981'};">
+              Status: ${escapeHtml(data.status || 'OK')} ${isFault ? '(Fault Trapped)' : '(Executed Successfully)'}
+            </span>
+            <span style="color: #94a3b8; font-size: 10px;">ID: ${escapeHtml(data.execution_id || 'N/A')} · ${Number(data.duration_ms || 0).toFixed(2)}ms</span>
+          </div>
+          <div>Gas Consumed: <strong style="color: #38bdf8;">${Number(data.gas_consumed || 0).toLocaleString()}</strong> (Remaining: ${Number(data.gas_remaining || 0).toLocaleString()})</div>
+          <div>Peak Memory: <strong style="color: #fbbf24;">${data.peak_memory_pages || 0} pages</strong> (${((data.peak_memory_bytes || 0) / 1024).toFixed(0)} KiB)</div>
+          ${data.error ? `<div style="color: #f87171; margin-top: 4px;">Error: ${escapeHtml(data.error)}</div>` : ''}
+          ${data.crash ? `<div style="color: #fbbf24; margin-top: 2px;">Crash Reason: <em>${escapeHtml(data.crash.reason)}</em> (Recovered: ${data.crash.recovered})</div>` : ''}
+        `;
+        loadSandboxState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Network Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function resetTenantSandbox(tenantID) {
+      if (!confirm(`Reset sandbox instance and clear quarantine for ${tenantID}?`)) return;
+      try {
+        const res = await fetch('/api/sandbox/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: tenantID, instance_id: 'inst-live' })
+        });
+        if (res.ok) {
+          loadSandboxState();
+        }
+      } catch (err) {
+        alert('Reset failed: ' + err.message);
+      }
+    }
+
+    async function clearCrashJournal() {
+      try {
+        await fetch('/api/sandbox/crashes/clear', { method: 'POST' });
+        loadSandboxState();
+      } catch (err) {
+        console.error('Clear journal error:', err);
+      }
+    }
+
+    async function fetchSandboxDiagnostics() {
+      const diag = document.getElementById('sandbox-diag-result');
+      diag.style.display = 'block';
+      diag.textContent = 'Querying full sandbox runtime diagnostics...';
+      try {
+        const [status, crashes] = await Promise.all([
+          fetch('/api/sandbox/status').then(r => r.json()),
+          fetch('/api/sandbox/crashes').then(r => r.json())
+        ]);
+        diag.innerHTML = `
+          <div style="color: #10b981; font-weight: 700; margin-bottom: 6px;">Edge Wasm Sandbox Supervisor Diagnostics</div>
+          <pre style="color: #f8fafc; font-size: 11px; max-height: 140px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px;">${escapeHtml(JSON.stringify({ status, crashes }, null, 2))}</pre>
+        `;
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
     applyRadarPreset();
+    applySandboxPreset();
 
     loadState();
     setInterval(loadState, 2000);

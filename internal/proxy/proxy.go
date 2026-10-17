@@ -34,6 +34,7 @@ type ProxyHandler struct {
 	UsageRecorder    func(tenantID, accountID, service string, cpuMs, bytesIn, bytesOut int64)
 	ColoResolver     func(r *http.Request) (colo string, distanceKm float64)
 	SteeringResolver func(r *http.Request) (mode string, latencyUs float64, target string)
+	SandboxResolver  func(r *http.Request) (status string, memoryPages int)
 	MaxRetries       int
 	MaxBodyBytes     int64
 }
@@ -185,6 +186,11 @@ func (p *ProxyHandler) SetSteeringResolver(resolver func(r *http.Request) (mode 
 	p.SteeringResolver = resolver
 }
 
+// SetSandboxResolver attaches an optional Wasm sandbox state resolver to annotate proxy telemetry headers.
+func (p *ProxyHandler) SetSandboxResolver(resolver func(r *http.Request) (status string, memoryPages int)) {
+	p.SandboxResolver = resolver
+}
+
 var errBodyTooLarge = errors.New("request body too large")
 
 func (p *ProxyHandler) bufferRequestBody(r *http.Request) ([]byte, error) {
@@ -316,6 +322,12 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 			if target != "" {
 				w.Header().Set("X-CF-Broker-Steering-Target", target)
 			}
+		}
+	}
+	if p.SandboxResolver != nil && r != nil {
+		if status, pages := p.SandboxResolver(r); status != "" {
+			w.Header().Set("X-CF-Broker-Sandbox-Status", status)
+			w.Header().Set("X-CF-Broker-Sandbox-Pages", strconv.Itoa(pages))
 		}
 	}
 

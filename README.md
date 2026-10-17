@@ -18,6 +18,9 @@
 
 ## ⚡ Highlights
 
+- **Edge Wasm Sandbox & 32MB Memory Hard Ceiling**: Safe managed WebAssembly linear memory partitioned in 64 KiB pages (`WasmPageSize = 65536`), strictly enforcing an unyielding 32 MiB physical ceiling (`HardCeilingMemoryPages = 512`), out-of-bounds access protection, zeroization scrubbing on teardown, and peak allocation tracking (`internal/sandbox/memory.go`).
+- **Deterministic Gas Accounting & Loop Trapping**: Per-instruction execution budgeting with deterministic gas metering and step accounting, immediately halting runaway infinite iterations upon gas budget depletion without hanging the host broker (`internal/sandbox/gas.go`).
+- **Host Crash Isolation & Fault-Tolerant Panic Recovery**: Deferred panic recovery wrapping guest workload executions, trapping guest faults (SIGSEGV memory violations, unhandled runtime panics, out-of-gas traps, and OOM over-allocations) while ensuring the host broker remains 100% stable, backed by a circular ring-buffer crash journal (retaining up to 500 recent crash reports) and progressive tenant quarantine thresholds (`internal/sandbox/engine.go`).
 - **Zero-Overhead HTTP/3 eBPF Packet Steering**: Kernel-level socket dispatching bypassing user-space TCP stack via eBPF sockmap and XDP hooks on Linux, achieving sub-10-microsecond (< 10µs, measured ~0.26µs) dispatch latency for edge proxy workloads (`internal/steering/engine.go`).
 - **RFC 9000 UDP/QUIC Packet Header Inspection**: Zero-heap packet inspection parsing QUIC Long (Initial, 0-RTT, Handshake, Retry) and Short (1-RTT) headers, extracting Destination and Source Connection IDs (DCID/SCID), and steering traffic directly to optimal worker endpoints based on CID prefix rules and least-connection load balancing (`internal/steering/quic_parser.go`).
 - **Cross-Platform Kernel Bypass & Userspace Fallback**: Seamless cross-platform architecture providing native eBPF sockmap hooks on Linux and zero-copy user-space fastpath dispatch on Windows and macOS with sub-microsecond latency and 100% test coverage (`internal/steering/`).
@@ -533,10 +536,133 @@ curl http://localhost:9081/api/rotator/tombstones
 
 ---
 
+## 📦 Edge Wasm Sandbox Memory Limiter & Crash Isolation
+
+Edge worker workloads running in multi-tenant broker deployments require absolute resource boundaries and fault isolation to prevent rogue scripts, memory leaks, or unhandled exceptions from degrading the host broker or leaking data across tenants.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                   Edge Wasm Sandbox Supervisor Engine                  │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│   Guest Worker Bytecode (Wasm / Simulated Bytecode)                    │
+│         │                                                              │
+│         ▼                                                              │
+│   ┌──────────────────────────────────────────────────────────────┐     │
+│   │ Safe Managed Linear Memory (64 KiB Pages)                    │     │
+│   │  • Tenant Quota (e.g. 16MB)  • Hard Ceiling: 32MB (512p)     │     │
+│   │  • Bounds Checking           • Teardown Zeroization Scrub    │     │
+│   └──────────────────────────────────────────────────────────────┘     │
+│         │                                                              │
+│         ▼                                                              │
+│   ┌──────────────────────────────────────────────────────────────┐     │
+│   │ Deterministic Gas Accountant & Loop Step Counter             │     │
+│   │  • Basic Op: 1 gas           • Math: 2 gas                   │     │
+│   │  • Memory: 10 gas            • Branch/Loop: 5 gas            │     │
+│   │  • Loop Steps Trap: Deterministic Halt on Budget Exhaustion  │     │
+│   └──────────────────────────────────────────────────────────────┘     │
+│         │                                                              │
+│         ▼                                                              │
+│   ┌──────────────────────────────────────────────────────────────┐     │
+│   │ Fault-Tolerant Panic Isolation Guard (defer recover)         │     │
+│   │  • SIGSEGV / Memory Violations Trapped                       │     │
+│   │  • Host Broker Process 100% Intact & Healthy                 │     │
+│   │  • Circular Ring-Buffer Crash Journal (500 Entries)          │     │
+│   │  • Progressive Tenant Quarantine Threshold                   │     │
+│   └──────────────────────────────────────────────────────────────┘     │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Core Architecture Capabilities
+
+1. **Strict 32 MiB Physical Hard Ceiling**: WebAssembly linear memory is partitioned into 64 KiB pages (`WasmPageSize = 65536`). Even if a tenant policy requests more, the broker strictly caps linear memory at 512 pages (32 MiB, `HardCeilingMemoryPages`). Any allocation exceeding this upper ceiling is rejected with `ErrMemoryHardCeilingExceeded` and recorded as an OOM interception.
+2. **Deterministic Gas Accounting**: Instructions debit predefined weights (basic op: 1, arithmetic: 2, memory access: 10, loop step: 5, call: 20, memory grow: 100/page). If gas is depleted, the execution halts deterministically with `ErrGasExhausted`, breaking infinite loops without hanging the broker thread.
+3. **Panic & Fault Isolation**: Guest execution is wrapped in deferred recovery logic (`defer func() { if r := recover(); ... }`). Severe faults (e.g., simulated SIGSEGV null-pointer dereferences or runtime panics) are trapped, formatting an isolated `CrashReport` with stack trace while the host broker continues serving traffic without interruption.
+4. **Crash Journal & Progressive Quarantine**: A thread-safe circular ring buffer retains the latest 500 crash reports with timestamps, reasons, and memory states. If a tenant exceeds its configured consecutive crash threshold (default: 5), it is automatically placed in `QUARANTINED` status until an operator issues a reset.
+5. **Zeroization Scrubbing**: Upon instance teardown or reset, all linear memory slices are wiped with zero bytes (`subtle.ConstantTimeCompare`), preventing cross-tenant data remanence and token leakage.
+
+### Usage & Example Commands
+
+```bash
+# 1. Inspect sandbox supervisor status and aggregate metrics
+curl http://localhost:9081/api/sandbox/status
+
+# 2. Execute a compute workload in guest Wasm sandbox
+curl -X POST http://localhost:9081/api/sandbox/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "tenant-edge-prod",
+    "instance_id": "inst-1",
+    "payload_type": "compute",
+    "gas_budget": 100000
+  }'
+
+# 3. Test deterministic infinite loop trap (halts on gas exhaustion)
+curl -X POST http://localhost:9081/api/sandbox/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "tenant-edge-prod",
+    "instance_id": "inst-1",
+    "payload_type": "infinite_loop",
+    "gas_budget": 5000
+  }'
+
+# 4. Test 32MB physical hard ceiling enforcement (OOM rejection)
+curl -X POST http://localhost:9081/api/sandbox/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "tenant-edge-prod",
+    "instance_id": "inst-1",
+    "payload_type": "memory_alloc",
+    "requested_pages": 600
+  }'
+
+# 5. Test guest panic/fault isolation (host broker remains 100% stable)
+curl -X POST http://localhost:9081/api/sandbox/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "tenant-edge-prod",
+    "instance_id": "inst-1",
+    "payload_type": "panic_fault"
+  }'
+
+# 6. List recent crash journal reports and recovered stack traces
+curl "http://localhost:9081/api/sandbox/crashes?limit=10"
+
+# 7. Register or update custom tenant sandbox quota policy
+curl -X POST http://localhost:9081/api/sandbox/tenants \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "tenant-edge-prod",
+    "max_memory_pages": 256,
+    "gas_limit": 2000000,
+    "max_crash_threshold": 5
+  }'
+
+# 8. Reset instance and clear quarantine
+curl -X POST http://localhost:9081/api/sandbox/reset \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id": "tenant-edge-prod", "instance_id": "inst-1"}'
+```
+
+---
+
 ## 📡 REST API Reference
 
 | Endpoint | Method | Auth | Description |
 | :--- | :---: | :---: | :--- |
+| `/api/sandbox/status` | `GET` | Public | Sandbox supervisor status, active instances, OOM interceptions, and panic recoveries |
+| `/api/sandbox/execute` | `POST` | Public | Execute guest Wasm workload under strict memory limits and gas metering |
+| `/api/sandbox/tenants` | `GET/POST` | Public | Inspect or update tenant sandbox isolation policies and quotas |
+| `/api/sandbox/crashes` | `GET` | Public | Circular crash journal listing trapped faults and recovered stack traces |
+| `/api/sandbox/crashes/clear` | `POST` | Public | Flush the in-memory crash journal ring buffer |
+| `/api/sandbox/reset` | `POST` | Public | Reset crashed or quarantined sandbox instance to fresh IDLE state |
+| `/api/steering/status` | `GET` | Public | HTTP/3 eBPF steering status, active mode, and throughput stats |
+| `/api/steering/endpoints` | `GET/POST/DELETE` | Public | List, register, or remove upstream worker endpoints for direct steering |
+| `/api/steering/rules` | `GET/POST/DELETE` | Public | List, add, or delete QUIC Connection ID prefix routing rules |
+| `/api/steering/simulate` | `POST` | Public | Simulate UDP/QUIC packet header inspection and measure microsecond dispatch latency |
+| `/api/steering/stats` | `GET` | Public | Fine-grained microsecond dispatch telemetry and sub-10µs ratio |
 | `/api/rotator/status` | `GET` | Public | Rotator status, active tokens, renewals, and mesh propagation latency |
 | `/api/rotator/tokens` | `GET` | Public | List all active tokens under rotation management |
 | `/api/rotator/renew` | `POST` | Public | Trigger immediate rotation and token key renewal |

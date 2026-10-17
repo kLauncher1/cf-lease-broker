@@ -109,48 +109,57 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 
 ---
 
-## Release: v0.14.0 (Edge Key-Value Geo-Replication Mesh)
+## Release: v0.14.0 (Edge Wasm Sandbox Memory Limiter & Crash Isolation)
+- [x] Safe managed linear memory with 64 KiB pages and strict 32 MiB physical upper ceiling enforcement.
+- [x] Deterministic instruction gas budgeting with loop step accounting to trap runaway infinite iterations.
+- [x] Host crash isolation and deferred panic recovery preventing unhandled guest faults from terminating the broker.
+- [x] Circular ring-buffer crash journal and progressive tenant quarantine enforcement.
+- [x] REST API endpoints (/api/sandbox/*) and interactive glassmorphism control panel in embedded dashboard.
+
+---
+
+## Release: v0.15.0 (Edge Key-Value Geo-Replication Mesh)
 - [ ] Multi-master asynchronous KV replication across active broker nodes with vector clock conflict resolution.
 - [ ] CRDT primitives for distributed counter and set synchronization across edge clusters.
 - [ ] Read-your-writes and monotonic-read consistency guarantees for regional tenant workers.
 
 ---
 
-## Release: v0.15.0 (Multi-Cluster Gateway Federation & WAN Mesh)
+## Release: v0.16.0 (Multi-Cluster Gateway Federation & WAN Mesh)
 - [ ] Cross-cloud and multi-datacenter broker federation over secure WAN tunnels.
 - [ ] Dynamic boundary route advertisement with WireGuard overlay mesh.
 - [ ] Global tenant lease routing with localized data sovereignty enforcement.
 
 ---
 
-## Release: v0.16.0 (Zero-Knowledge Edge Proof Verifier)
+## Release: v0.17.0 (Zero-Knowledge Edge Proof Verifier)
 - [ ] Cryptographic verification of tenant worker isolation and quota attestations without revealing underlying API credentials.
 - [ ] Succinct non-interactive zero-knowledge proofs for trustless edge verification.
 
 ---
 
-## Release: v0.16.0 (Autonomous Multi-Tenant eBPF DDoS Scrubbing & Edge Mitigation)
+## Release: v0.18.0 (Autonomous Multi-Tenant eBPF DDoS Scrubbing & Edge Mitigation)
 - [ ] Line-rate XDP packet filter dropping volumetric SYN floods and amplification attacks at zero CPU cost.
 - [ ] Stateful IP reputation scoring and automatic challenge token issuance for anomalous client streams.
 - [ ] Microsecond-scale mitigation telemetry export to edge monitoring mesh.
 
 ---
 
-## Release: v0.17.0 (Edge Hardware Secure Enclave Intel SGX & AMD SEV Memory Attestation)
+## Release: v0.19.0 (Edge Hardware Secure Enclave Intel SGX & AMD SEV Memory Attestation)
 - [ ] Hardware-isolated secure memory enclave shielding cryptographic keys from host OS compromise.
 - [ ] Remote attestation quotes cryptographically verified during inter-broker lease peering.
 - [ ] Confidential computing runtime for zero-trust worker bundle execution.
 
 ---
 
-## Release: v0.18.0 (Quantum Entropy Beacon & Hardware RNG Attestation)
+## Release: v0.20.0 (Quantum Entropy Beacon & Hardware RNG Attestation)
 - [ ] Quantum entropy harvesting from CPU TRNG hardware pipelines and jitter entropy sources.
 - [ ] NIST SP 800-90B continuous health testing and cryptographic randomness extraction for lease tokens.
 - [ ] Zero-trust entropy attestation broadcast across regional broker mesh instances.
 
 ---
 
-## Release: v0.19.0 (Dynamic Line-Rate BGP Anycast Prefix Broadcaster)
+## Release: v0.21.0 (Dynamic Line-Rate BGP Anycast Prefix Broadcaster)
 - [ ] Autonomous BGP session peering with upstream Tier-1 transit providers for custom Anycast IP prefixes.
 - [ ] Line-rate prefix withdrawal and traffic diversion within 5 milliseconds of PoP partition.
 - [ ] Dynamic Community tagging routing tenant requests based on real-time transit pricing and peering agreements.
