@@ -422,3 +422,40 @@ func TestProxyColoResolverIntegration(t *testing.T) {
 		t.Fatalf("expected X-CF-Broker-Distance-Km header 42.5, got %s", rec.Header().Get("X-CF-Broker-Distance-Km"))
 	}
 }
+
+func TestProxySteeringResolverIntegration(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"steered"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	handler.SetSteeringResolver(func(r *http.Request) (string, float64, string) {
+		return "ebpf-sockmap", 0.42, "worker-iad-01"
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/endpoint", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-CF-Broker-Steering-Mode") != "ebpf-sockmap" {
+		t.Fatalf("expected X-CF-Broker-Steering-Mode header ebpf-sockmap, got %s", rec.Header().Get("X-CF-Broker-Steering-Mode"))
+	}
+	if rec.Header().Get("X-CF-Broker-Steering-Latency-Us") != "0.42" {
+		t.Fatalf("expected X-CF-Broker-Steering-Latency-Us header 0.42, got %s", rec.Header().Get("X-CF-Broker-Steering-Latency-Us"))
+	}
+	if rec.Header().Get("X-CF-Broker-Steering-Target") != "worker-iad-01" {
+		t.Fatalf("expected X-CF-Broker-Steering-Target header worker-iad-01, got %s", rec.Header().Get("X-CF-Broker-Steering-Target"))
+	}
+}

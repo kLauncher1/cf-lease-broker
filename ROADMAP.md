@@ -103,27 +103,27 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 ---
 
 ## Release: v0.13.0 (Zero-Overhead HTTP/3 eBPF Packet Steering)
-- [ ] Kernel-level socket dispatching bypassing user-space TCP stack for local Linux deployments.
-- [ ] UDP/QUIC packet header inspection steering traffic directly to optimal worker endpoints.
-- [ ] Sub-10-microsecond dispatch latency for high-throughput edge proxies.
+- [x] Kernel-level socket dispatching bypassing user-space TCP stack for local Linux deployments.
+- [x] UDP/QUIC packet header inspection steering traffic directly to optimal worker endpoints.
+- [x] Sub-10-microsecond dispatch latency for high-throughput edge proxies.
 
 ---
 
-## Release: v0.13.0 (Edge Key-Value Geo-Replication Mesh)
+## Release: v0.14.0 (Edge Key-Value Geo-Replication Mesh)
 - [ ] Multi-master asynchronous KV replication across active broker nodes with vector clock conflict resolution.
 - [ ] CRDT primitives for distributed counter and set synchronization across edge clusters.
 - [ ] Read-your-writes and monotonic-read consistency guarantees for regional tenant workers.
 
 ---
 
-## Release: v0.14.0 (Multi-Cluster Gateway Federation & WAN Mesh)
+## Release: v0.15.0 (Multi-Cluster Gateway Federation & WAN Mesh)
 - [ ] Cross-cloud and multi-datacenter broker federation over secure WAN tunnels.
 - [ ] Dynamic boundary route advertisement with WireGuard overlay mesh.
 - [ ] Global tenant lease routing with localized data sovereignty enforcement.
 
 ---
 
-## Release: v0.15.0 (Zero-Knowledge Edge Proof Verifier)
+## Release: v0.16.0 (Zero-Knowledge Edge Proof Verifier)
 - [ ] Cryptographic verification of tenant worker isolation and quota attestations without revealing underlying API credentials.
 - [ ] Succinct non-interactive zero-knowledge proofs for trustless edge verification.
 
