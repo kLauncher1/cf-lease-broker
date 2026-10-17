@@ -33,6 +33,7 @@ type ProxyHandler struct {
 	CertVerifier     func(r *http.Request) error
 	UsageRecorder    func(tenantID, accountID, service string, cpuMs, bytesIn, bytesOut int64)
 	ColoResolver     func(r *http.Request) (colo string, distanceKm float64)
+	SteeringResolver func(r *http.Request) (mode string, latencyUs float64, target string)
 	MaxRetries       int
 	MaxBodyBytes     int64
 }
@@ -179,6 +180,11 @@ func (p *ProxyHandler) SetColoResolver(resolver func(r *http.Request) (colo stri
 	p.ColoResolver = resolver
 }
 
+// SetSteeringResolver attaches an optional packet steering resolver to annotate responses with steering telemetry.
+func (p *ProxyHandler) SetSteeringResolver(resolver func(r *http.Request) (mode string, latencyUs float64, target string)) {
+	p.SteeringResolver = resolver
+}
+
 var errBodyTooLarge = errors.New("request body too large")
 
 func (p *ProxyHandler) bufferRequestBody(r *http.Request) ([]byte, error) {
@@ -301,6 +307,15 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 		if colo, dist := p.ColoResolver(r); colo != "" {
 			w.Header().Set("X-CF-Broker-Colo", colo)
 			w.Header().Set("X-CF-Broker-Distance-Km", fmt.Sprintf("%.1f", dist))
+		}
+	}
+	if p.SteeringResolver != nil && r != nil {
+		if mode, latencyUs, target := p.SteeringResolver(r); mode != "" {
+			w.Header().Set("X-CF-Broker-Steering-Mode", mode)
+			w.Header().Set("X-CF-Broker-Steering-Latency-Us", fmt.Sprintf("%.2f", latencyUs))
+			if target != "" {
+				w.Header().Set("X-CF-Broker-Steering-Target", target)
+			}
 		}
 	}
 

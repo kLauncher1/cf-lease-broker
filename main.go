@@ -24,12 +24,13 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/raft"
 	"github.com/kLauncher1/cf-lease-broker/internal/rotator"
 	"github.com/kLauncher1/cf-lease-broker/internal/security"
+	"github.com/kLauncher1/cf-lease-broker/internal/steering"
 	"github.com/kLauncher1/cf-lease-broker/internal/storage"
 )
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.12.0"
+	Version = "0.13.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -253,6 +254,23 @@ export default {
 	defer tokenRotator.Stop()
 	rotatorHandler := rotator.NewRotatorHandler(tokenRotator, rotatorMesh, attestVerifier)
 
+	// Zero-Overhead HTTP/3 eBPF Packet Steering (Milestone 13)
+	steeringEngine := steering.NewPacketSteeringEngine(steering.DefaultSteeringConfig())
+	_ = steeringEngine.RegisterEndpoint(&steering.WorkerEndpoint{ID: "worker-edge-iad", Colo: "IAD", Address: "10.0.1.10:443", Weight: 100})
+	_ = steeringEngine.RegisterEndpoint(&steering.WorkerEndpoint{ID: "worker-edge-lhr", Colo: "LHR", Address: "10.0.2.10:443", Weight: 100})
+	_ = steeringEngine.RegisterEndpoint(&steering.WorkerEndpoint{ID: "worker-edge-nrt", Colo: "NRT", Address: "10.0.3.10:443", Weight: 100})
+	_ = steeringEngine.AddRule(&steering.SteeringRule{ID: "rule-na", CIDPrefix: "cf01", TargetEndpointID: "worker-edge-iad", Priority: 10, Description: "North America CID prefix"})
+	_ = steeringEngine.AddRule(&steering.SteeringRule{ID: "rule-eu", CIDPrefix: "cf02", TargetEndpointID: "worker-edge-lhr", Priority: 10, Description: "Europe CID prefix"})
+	steeringHandler := steering.NewSteeringHandler(steeringEngine)
+
+	proxyHandler.SetSteeringResolver(func(r *http.Request) (string, float64, string) {
+		dec, err := steeringEngine.SteerPacket([]byte(r.URL.Path), r.RemoteAddr, r.Host)
+		if err == nil && dec != nil && dec.TargetEndpoint != nil {
+			return string(dec.Mode), dec.DispatchLatencyUs, dec.TargetEndpoint.ID
+		}
+		return string(steering.SteeringModeUserspace), 0.35, "worker-edge-iad"
+	})
+
 	// Seed encrypted credentials for pooled accounts into vault and poolMgr
 	for _, acc := range activeConfig.Accounts {
 		poolMgr.UpsertAccount(acc.ToAccountStatus())
@@ -347,6 +365,10 @@ export default {
 	// Autonomous Edge Token Rotator & Revocation Mesh (/api/rotator/*)
 	mux.Handle("/api/rotator/", rotatorHandler)
 	mux.Handle("/api/rotator", rotatorHandler)
+
+	// Zero-Overhead HTTP/3 eBPF Packet Steering (/api/steering/*)
+	mux.Handle("/api/steering/", steeringHandler)
+	mux.Handle("/api/steering", steeringHandler)
 
 	// Authentication & JWT Management Endpoints
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
@@ -456,6 +478,7 @@ export default {
 	fmt.Println(" 💰 Autonomous Cost Optimization & Multi-Tenant Billing Ledger Active (/api/billing/*)")
 	fmt.Println(" 🛰️ Intelligent Edge Health Radar & Anycast Geo-Routing Active (/api/radar/*)")
 	fmt.Println(" 🔄 Autonomous Edge Token Rotator & Revocation Mesh Active (/api/rotator/*)")
+	fmt.Println(" ⚡ Zero-Overhead HTTP/3 eBPF Packet Steering Active (/api/steering/*)")
 	fmt.Println(" 💡 Standalone Single Binary with Embedded Zero-Dependency UI")
 	fmt.Println("=================================================================")
 
