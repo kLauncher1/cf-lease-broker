@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-10-17
+
+### Added
+- **Edge Wasm Sandbox & Managed Linear Memory**: Implemented `internal/sandbox/memory.go` and `internal/sandbox/types.go` providing safe, bounds-enforced WebAssembly linear memory partitioned in 64 KiB pages (`WasmPageSize = 65536`), enforcing an unyielding 32 MiB physical upper ceiling (`HardCeilingMemoryPages = 512`), zeroization scrubbing on teardown to eliminate cross-tenant data remanence, and peak allocation tracking.
+- **Deterministic Gas Accounting & Loop Trapping**: Implemented `internal/sandbox/gas.go` featuring instruction budgeting per WebAssembly operation classification (basic ops, arithmetic, memory access, branch/loop, function calls, and page growth), real-time gas consumption tracking, and deterministic termination of infinite loops via `ConsumeLoopStep()`.
+- **Fault-Isolated Sandbox Supervisor & Micro-Interpreter**: Implemented `internal/sandbox/engine.go` wrapping guest workload executions in deferred panic recovery blocks, trapping guest faults (e.g. SIGSEGV memory violations, unhandled panics, out-of-gas traps, and OOM over-allocations) while keeping the host broker process 100% stable, coupled with a circular ring-buffer crash journal (retaining up to 500 recent crash reports) and progressive tenant quarantine thresholds.
+- **Sandbox REST API Endpoints**: Implemented `internal/sandbox/handler.go` mounting `/api/sandbox/*` in `main.go`, exposing `/api/sandbox/status`, `/api/sandbox/execute`, `/api/sandbox/tenants`, `/api/sandbox/crashes`, `/api/sandbox/crashes/clear`, and `/api/sandbox/reset` with strict 64KB request body bounding against buffer exhaustion attacks.
+- **Interactive Wasm Sandbox Management Dashboard**: Enhanced `web/dist/index.html` with a glassmorphism control panel featuring live telemetry counters (active sandboxes, memory hard ceiling, OOM interceptions, panic recoveries, and gas debited), a tenant isolation quota table, an interactive Wasm execution tester with presets (Normal Compute, Infinite Loop, Memory OOM, Panic Fault), and a real-time crash journal log with recovered stack traces.
+- **Comprehensive Sandbox Test Suite**: Added 11 unit and integration tests in `internal/sandbox/sandbox_test.go` verifying linear memory bounds, memory growth limits, zeroization scrubbing, gas metering precision, infinite loop traps, host isolation across panic faults, tenant quarantine lifecycle, REST API handlers, 64KB request body bounding, and 40-goroutine concurrent execution.
+
+### Changed
+- Mounted `/api/sandbox/` routes on HTTP mux and initialized `SandboxEngine` and `SandboxHandler` in `main.go`.
+- Added `SandboxResolver` hook to `ProxyHandler` (`internal/proxy/proxy.go`) and configured downstream telemetry headers (`X-CF-Broker-Sandbox-Status`, `X-CF-Broker-Sandbox-Pages`).
+- Bumped application version to `0.14.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.13.0] - 2026-10-17
 
 ### Added

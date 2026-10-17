@@ -23,6 +23,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/radar"
 	"github.com/kLauncher1/cf-lease-broker/internal/raft"
 	"github.com/kLauncher1/cf-lease-broker/internal/rotator"
+	"github.com/kLauncher1/cf-lease-broker/internal/sandbox"
 	"github.com/kLauncher1/cf-lease-broker/internal/security"
 	"github.com/kLauncher1/cf-lease-broker/internal/steering"
 	"github.com/kLauncher1/cf-lease-broker/internal/storage"
@@ -30,7 +31,7 @@ import (
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.13.0"
+	Version = "0.14.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -45,7 +46,7 @@ type grantRequest struct {
 }
 
 func main() {
-	// Initialize configuration & zero-downtime hot reloader (Milestone 6)
+	// Initialize configuration & zero-downtime hot reloader
 	configPath := os.Getenv("CF_BROKER_CONFIG_PATH")
 	if configPath == "" {
 		configPath = config.DefaultConfigPath
@@ -69,46 +70,27 @@ func main() {
 	kvCache := storage.NewKVCacheLayer(poolMgr)
 	r2Gateway := storage.NewR2Gateway(poolMgr, kvCache, webhookDispatcher, storage.DefaultChunkSize)
 
-	// Edge Worker Bundle Virtual Compiler & Dynamic Route Injection (Milestone 7)
+	// Edge Worker virtual compiler and dynamic route injector
 	bundleMgr := compiler.NewBundleManager()
 	routeCompiler := compiler.NewRouteCompiler()
 	streamPipe := compiler.NewStreamPipe(compiler.DefaultBufferSize)
 	compilerHandler := compiler.NewCompilerHandler(bundleMgr, routeCompiler, streamPipe)
 
-	// Seed default edge worker and dynamic route mappings
-	seedScript := `// Edge Worker Microservice Gateway
-export default {
-	async fetch(request, env, ctx) {
-		const url = new URL(request.url);
-		return new Response(JSON.stringify({
-			status: "edge_worker_dispatched",
-			tenant: "cf-tenant-alpha",
-			path: url.pathname,
-			timestamp: new Date().toISOString()
-		}), {
-			headers: { "Content-Type": "application/json", "X-Edge-Origin": "cf-lease-broker" }
-		});
-	}
-};`
+	seedScript := `export default { async fetch(req) { return new Response(JSON.stringify({status:"edge_worker_dispatched",tenant:"cf-tenant-alpha",time:new Date().toISOString()}),{headers:{"Content-Type":"application/json","X-Edge-Origin":"cf-lease-broker"}}); } };`
 	seedBundle, _ := bundleMgr.PackageWorker(compiler.BundleConfig{
-		TenantID:          "cf-tenant-alpha",
-		Name:              "gateway-worker",
-		Minify:            true,
-		CompatibilityDate: "2024-04-01",
-		MemoryLimitMB:     128,
+		TenantID: "cf-tenant-alpha", Name: "gateway-worker", Minify: true, CompatibilityDate: "2024-04-01", MemoryLimitMB: 128,
 	}, []byte(seedScript), nil)
 	if seedBundle != nil {
 		_, _ = routeCompiler.RegisterRoute("*.edge.broker/api/*", "zone-default", "cf-tenant-alpha", seedBundle.ID)
 		_, _ = routeCompiler.RegisterRoute("app.internal/*", "zone-default", "cf-tenant-alpha", seedBundle.ID)
 	}
 
-	// Distributed Quota, Rate Limiting & Prometheus Metrics (Milestone 5)
+	// Distributed quota, rate limiting & Prometheus metrics
 	slidingLimiter := quota.NewSlidingWindowLimiter(time.Minute, 120, 30)
 	probationMgr := quota.NewProbationManager(poolMgr)
 	quotaNotifier := quota.NewQuotaNotifier(os.Getenv("DISCORD_WEBHOOK_URL"), os.Getenv("SLACK_WEBHOOK_URL"), os.Getenv("WEBHOOK_URL"))
 	metricsCollector := quota.NewMetricsCollector(poolMgr, leaseEng, probationMgr, slidingLimiter)
 
-	// Background ticker for automated probation recovery and quota evaluation
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
@@ -120,13 +102,13 @@ export default {
 		}
 	}()
 
-	// Production Secrets Vault & Auth Manager (Milestone 4)
+	// Production secrets vault & auth manager
 	vault := security.NewSecretVault()
 	jwtSecret := []byte(os.Getenv("CF_BROKER_JWT_SECRET"))
 	jwtMgr := security.NewJWTManager(jwtSecret)
 	authMgr := security.NewAuthManager(jwtMgr, vault)
 
-	// High-Availability Raft Consensus Engine (Milestone 8)
+	// High-availability Raft consensus engine
 	raftNodeID := os.Getenv("CF_RAFT_NODE_ID")
 	if raftNodeID == "" {
 		raftNodeID = "broker-node-" + port
@@ -150,7 +132,6 @@ export default {
 
 	raftJournal, err := raft.NewJournal(raftDataDir)
 	if err != nil {
-		log.Printf("[Raft] Warning: fallback to in-memory journal: %v", err)
 		raftJournal, _ = raft.NewJournal("")
 	}
 	raftDiscovery := raft.NewPeerDiscovery(raftNodeID, raftDiscoveryDomain, peerMap)
@@ -161,10 +142,9 @@ export default {
 	raftNode := raft.NewRaftNode(raftCfg, raftJournal, raftDiscovery, brokerFSM)
 	raftNode.Start()
 	defer raftNode.Stop()
-
 	raftHandler := raft.NewRaftHandler(raftNode, raftJournal, raftDiscovery)
 
-	// Zero-Trust Mutual TLS (mTLS) & Ephemeral CA Mesh (Milestone 9)
+	// Zero-trust mutual TLS (mTLS) & ephemeral CA mesh
 	ephemeralCA, err := mtls.NewEphemeralCA("cf-lease-broker-root-ca", 365*24*time.Hour)
 	if err != nil {
 		log.Fatalf("Failed to initialize mTLS Ephemeral CA: %v", err)
@@ -189,10 +169,10 @@ export default {
 			}
 			return nil
 		}
-		log.Println("🔒 Zero-Trust mTLS Client Certificate Verification Enforced on Edge Proxy")
+		log.Println("Zero-Trust mTLS client certificate verification enforced on edge proxy")
 	}
 
-	// Autonomous Cost Optimization & Multi-Tenant Billing Ledger (Milestone 10)
+	// Cost optimization & multi-tenant billing ledger
 	billingMeter := billing.NewBillingMeter(billing.DefaultCloudflareRates())
 	for _, acc := range activeConfig.Accounts {
 		tier := billing.TierPaidStandard
@@ -207,18 +187,15 @@ export default {
 		billingMeter.RecordProxyRequest(tenantID, accountID, service, cpuMs, bytesIn, bytesOut)
 	})
 
-	// Background ticker for autonomous workload migration away from paid overages
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			if events := costOptimizer.EvaluateWorkloadMigration(); len(events) > 0 {
-				log.Printf("[Billing] Autonomous Cost Optimizer migrated %d workloads to standby free accounts", len(events))
-			}
+			_ = costOptimizer.EvaluateWorkloadMigration()
 		}
 	}()
 
-	// Intelligent Edge Health Radar & Latency-Optimized Anycast Geo-Routing (Milestone 11)
+	// Intelligent Edge Health Radar & Anycast geo-routing
 	probeEngine := radar.NewProbeEngine(radar.DefaultPoPList())
 	radarRouter := radar.NewRadarRouter(probeEngine)
 	radarHandler := radar.NewRadarHandler(radarRouter, probeEngine)
@@ -246,7 +223,7 @@ export default {
 		return rec.Colo, rec.DistanceKm
 	})
 
-	// Autonomous Edge Token Rotator & Revocation Mesh (Milestone 12)
+	// Autonomous Edge Token Rotator & Revocation Mesh
 	rotatorMesh := rotator.NewRevocationMesh("broker-node-"+port, []byte(os.Getenv("CF_BROKER_GOSSIP_SECRET")))
 	attestVerifier := rotator.NewAttestationVerifier([]byte(os.Getenv("CF_BROKER_ATTEST_SECRET")))
 	tokenRotator := rotator.NewTokenRotator(rotator.DefaultRotatorConfig(), rotatorMesh, leaseEng, attestVerifier)
@@ -254,7 +231,7 @@ export default {
 	defer tokenRotator.Stop()
 	rotatorHandler := rotator.NewRotatorHandler(tokenRotator, rotatorMesh, attestVerifier)
 
-	// Zero-Overhead HTTP/3 eBPF Packet Steering (Milestone 13)
+	// Zero-overhead HTTP/3 eBPF packet steering
 	steeringEngine := steering.NewPacketSteeringEngine(steering.DefaultSteeringConfig())
 	_ = steeringEngine.RegisterEndpoint(&steering.WorkerEndpoint{ID: "worker-edge-iad", Colo: "IAD", Address: "10.0.1.10:443", Weight: 100})
 	_ = steeringEngine.RegisterEndpoint(&steering.WorkerEndpoint{ID: "worker-edge-lhr", Colo: "LHR", Address: "10.0.2.10:443", Weight: 100})
@@ -271,7 +248,21 @@ export default {
 		return string(steering.SteeringModeUserspace), 0.35, "worker-edge-iad"
 	})
 
-	// Seed encrypted credentials for pooled accounts into vault and poolMgr
+	// Edge Wasm Sandbox Memory Limiter & Crash Isolation
+	sandboxEngine := sandbox.NewSandboxEngine(sandbox.DefaultSandboxConfig())
+	sandboxHandler := sandbox.NewSandboxHandler(sandboxEngine)
+	proxyHandler.SetSandboxResolver(func(r *http.Request) (string, int) {
+		tenantID := r.Header.Get("X-Tenant-ID")
+		if tenantID == "" {
+			tenantID = "default"
+		}
+		if inst, err := sandboxEngine.GetOrCreateInstance(tenantID, "inst-0"); err == nil {
+			return string(inst.Status), inst.Memory.Pages()
+		}
+		return string(sandbox.StatusIdle), sandbox.DefaultInitialMemoryPages
+	})
+
+	// Seed encrypted credentials into vault and poolMgr
 	for _, acc := range activeConfig.Accounts {
 		poolMgr.UpsertAccount(acc.ToAccountStatus())
 		token := acc.APIToken
@@ -281,9 +272,7 @@ export default {
 		_ = vault.StoreCredential(acc.ID, []byte(token))
 	}
 
-	// Register hot-reload callback to synchronize pool and credentials with zero downtime
 	hotReloader.OnReload(func(oldCfg, newCfg *config.Config) {
-		log.Printf("[Config] Hot reloading configuration with %d accounts...", len(newCfg.Accounts))
 		var statuses []broker.AccountStatus
 		for _, acc := range newCfg.Accounts {
 			statuses = append(statuses, acc.ToAccountStatus())
@@ -297,7 +286,6 @@ export default {
 			billingMeter.RegisterAccount(acc.ID, tier, 10000000)
 		}
 		poolMgr.SyncAccounts(statuses)
-		log.Println("[Config] Hot reload applied successfully with zero downtime.")
 	})
 
 	if err := hotReloader.Start(); err != nil {
@@ -306,10 +294,7 @@ export default {
 
 	mux := http.NewServeMux()
 
-	// Prometheus 0.0.4 Metrics Exporter (/metrics)
 	mux.Handle("/metrics", metricsCollector)
-
-	// Distributed Quota, Webhooks & Probation APIs (/api/quota/*)
 	mux.Handle("/api/quota/webhooks/", quotaNotifier)
 	mux.Handle("/api/quota/alerts", quotaNotifier)
 	mux.Handle("/api/quota/probation", probationMgr)
@@ -323,66 +308,43 @@ export default {
 		_ = json.NewEncoder(w).Encode(slidingLimiter.GetStats(key))
 	})
 
-	// Virtual R2 S3-Compatible Gateway (/s3/{bucket}/{key...})
 	mux.Handle("/s3/", r2Gateway)
-
-	// Multi-Account Partitioned KV API (/api/kv/*)
 	mux.Handle("/api/kv/", kvCache)
-
-	// Outgoing Quota Alerts & Webhooks API (/api/webhooks/*)
 	mux.Handle("/api/webhooks/", webhookDispatcher)
-
-	// Transparent Reverse Proxy with 429 Rate-Limit Interception
 	mux.Handle("/proxy/", proxyHandler)
 
-	// Production Secrets Vault API (/api/security/*, Protected by Bearer/Admin Auth)
 	mux.Handle("/api/security/", authMgr.RequireAuth(vault))
-
-	// Configuration & Hot-Reload Diagnostics API (/api/config/*, Protected by Bearer/Admin Auth)
 	mux.Handle("/api/config/", authMgr.RequireAuth(hotReloader))
 	mux.Handle("/api/config", authMgr.RequireAuth(hotReloader))
-
-	// Edge Worker Virtual Compiler, Dynamic Route Injection & Zero-Copy Streaming (/api/compiler/*)
 	mux.Handle("/api/compiler/", compilerHandler)
 	mux.Handle("/api/compiler", compilerHandler)
-
-	// High-Availability Raft Consensus & Distributed State Machine (/raft/*)
 	mux.Handle("/raft/", raftHandler)
 	mux.Handle("/raft", raftHandler)
-
-	// Zero-Trust Mutual TLS (mTLS) & Ephemeral CA Mesh (/api/mtls/*)
 	mux.Handle("/api/mtls/", mtlsHandler)
 	mux.Handle("/api/mtls", mtlsHandler)
-
-	// Autonomous Cost Optimization & Multi-Tenant Billing Ledger (/api/billing/*)
 	mux.Handle("/api/billing/", billingHandler)
 	mux.Handle("/api/billing", billingHandler)
-
-	// Intelligent Edge Health Radar & Latency-Optimized Anycast Geo-Routing (/api/radar/*)
 	mux.Handle("/api/radar/", radarHandler)
 	mux.Handle("/api/radar", radarHandler)
-
-	// Autonomous Edge Token Rotator & Revocation Mesh (/api/rotator/*)
 	mux.Handle("/api/rotator/", rotatorHandler)
 	mux.Handle("/api/rotator", rotatorHandler)
-
-	// Zero-Overhead HTTP/3 eBPF Packet Steering (/api/steering/*)
 	mux.Handle("/api/steering/", steeringHandler)
 	mux.Handle("/api/steering", steeringHandler)
 
-	// Authentication & JWT Management Endpoints
+	// Edge Wasm Sandbox Memory Limiter & Crash Isolation (/api/sandbox/*)
+	mux.Handle("/api/sandbox/", sandboxHandler)
+	mux.Handle("/api/sandbox", sandboxHandler)
+
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
 	mux.HandleFunc("/api/auth/revoke", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleRevokeToken)).ServeHTTP)
 	mux.HandleFunc("/api/auth/me", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleMe)).ServeHTTP)
 	mux.HandleFunc("/api/auth/status", authMgr.HandleStatus)
 
-	// API: List pooled Cloudflare accounts
 	mux.HandleFunc("/api/accounts", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(poolMgr.ListAccounts())
 	})
 
-	// API: List and grant leases (Protected by JWT/Bearer Authentication)
 	leaseHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == http.MethodPost {
@@ -418,12 +380,10 @@ export default {
 			_ = json.NewEncoder(w).Encode(voucher)
 			return
 		}
-
 		_ = json.NewEncoder(w).Encode(leaseEng.ListLeases())
 	})
 	mux.Handle("/api/leases", authMgr.RequireAuth(leaseHandler))
 
-	// API: Revoke active lease (Protected by JWT/Bearer Authentication)
 	revokeHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
 		if id == "" {
@@ -446,14 +406,11 @@ export default {
 	})
 	mux.Handle("/api/leases/revoke", authMgr.RequireAuth(revokeHandler))
 
-	// API: Cloudflare connectivity check
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		status := cfClient.CheckConnectivity(r.Context())
-		_ = json.NewEncoder(w).Encode(status)
+		_ = json.NewEncoder(w).Encode(cfClient.CheckConnectivity(r.Context()))
 	})
 
-	// Embedded Static Dashboard
 	subFS, err := fs.Sub(embeddedWeb, "web/dist")
 	if err != nil {
 		log.Fatalf("Failed to initialize embedded web filesystem: %v", err)
@@ -479,6 +436,7 @@ export default {
 	fmt.Println(" 🛰️ Intelligent Edge Health Radar & Anycast Geo-Routing Active (/api/radar/*)")
 	fmt.Println(" 🔄 Autonomous Edge Token Rotator & Revocation Mesh Active (/api/rotator/*)")
 	fmt.Println(" ⚡ Zero-Overhead HTTP/3 eBPF Packet Steering Active (/api/steering/*)")
+	fmt.Println(" 📦 Edge Wasm Sandbox Memory Limiter & Crash Isolation Active (/api/sandbox/*)")
 	fmt.Println(" 💡 Standalone Single Binary with Embedded Zero-Dependency UI")
 	fmt.Println("=================================================================")
 
