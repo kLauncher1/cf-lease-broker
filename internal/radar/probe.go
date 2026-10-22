@@ -92,6 +92,7 @@ func (pe *ProbeEngine) OnAnomaly(listener AnomalyListener) {
 // RecordProbeResult updates the telemetry state for a PoP with a new probe measurement.
 func (pe *ProbeEngine) RecordProbeResult(iata string, rttMs int64, success bool) {
 	pe.mu.Lock()
+	defer pe.mu.Unlock()
 
 	atomic.AddInt64(&pe.totalProbes, 1)
 	st, exists := pe.stats[iata]
@@ -149,15 +150,10 @@ func (pe *ProbeEngine) RecordProbeResult(iata string, rttMs int64, success bool)
 		}
 	}
 
-	var listenersToNotify []AnomalyListener
-	if triggerAnomaly && len(pe.listeners) > 0 {
-		listenersToNotify = make([]AnomalyListener, len(pe.listeners))
-		copy(listenersToNotify, pe.listeners)
-	}
-	pe.mu.Unlock()
-
-	for _, l := range listenersToNotify {
-		l(iata, oldEMA, float64(rttMs), degraded)
+	if triggerAnomaly {
+		for _, l := range pe.listeners {
+			l(iata, oldEMA, float64(rttMs), degraded)
+		}
 	}
 }
 
@@ -257,18 +253,6 @@ func (pe *ProbeEngine) GetAllStats() map[string]ProbeStats {
 		snapshot[k] = *v
 	}
 	return snapshot
-}
-
-// TotalProbes returns the count of dispatched probes safely using atomic load.
-func (pe *ProbeEngine) TotalProbes() int64 {
-	return atomic.LoadInt64(&pe.totalProbes)
-}
-
-// LastProbeRun returns the timestamp of the last probe run safely under RLock.
-func (pe *ProbeEngine) LastProbeRun() time.Time {
-	pe.mu.RLock()
-	defer pe.mu.RUnlock()
-	return pe.lastProbeRun
 }
 
 // Start begins the background periodic synthetic probing ticker.

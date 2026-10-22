@@ -1,10 +1,5 @@
 <div align="center">
 
-<p align="center">
-  <strong>🇺🇸 English</strong> · <a href="./docs/locales/ko.md">🇰🇷 한국어</a> · <a href="./docs/locales/zh-CN.md">🇨🇳 中文</a> · <a href="./docs/locales/es.md">🇪🇸 Español</a> · <a href="./docs/locales/hi.md">🇮🇳 हिन्दी</a><br />
-  <a href="./docs/locales/ar.md">🇸🇦 العربية</a> · <a href="./docs/locales/pt-BR.md">🇧🇷 Português</a> · <a href="./docs/locales/ru.md">🇷🇺 Русский</a> · <a href="./docs/locales/fr.md">🇫🇷 Français</a> · <a href="./docs/locales/id.md">🇮🇩 Bahasa Indonesia</a>
-</p>
-
 # ⚡ CF-Lease-Broker
 
 **Multi-account Cloudflare resource pooling & dynamic token lease broker for Workers, KV, and R2.**
@@ -23,6 +18,7 @@
 
 ## ⚡ Highlights
 
+- **Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding**: Decentralized broker clustering utilizing a consistent-hashing ring with 128 virtual nodes per broker, achieving uniform token lease sharding with minimal $K/N$ rebalancing on membership changes, coupled with a lightweight HMAC-SHA256 authenticated anti-entropy gossip protocol and anycast edge affinity steering (`internal/mesh/`).
 - **Edge Wasm Sandbox & 32MB Memory Hard Ceiling**: Safe managed WebAssembly linear memory partitioned in 64 KiB pages (`WasmPageSize = 65536`), strictly enforcing an unyielding 32 MiB physical ceiling (`HardCeilingMemoryPages = 512`), out-of-bounds access protection, zeroization scrubbing on teardown, and peak allocation tracking (`internal/sandbox/memory.go`).
 - **Deterministic Gas Accounting & Loop Trapping**: Per-instruction execution budgeting with deterministic gas metering and step accounting, immediately halting runaway infinite iterations upon gas budget depletion without hanging the host broker (`internal/sandbox/gas.go`).
 - **Host Crash Isolation & Fault-Tolerant Panic Recovery**: Deferred panic recovery wrapping guest workload executions, trapping guest faults (SIGSEGV memory violations, unhandled runtime panics, out-of-gas traps, and OOM over-allocations) while ensuring the host broker remains 100% stable, backed by a circular ring-buffer crash journal (retaining up to 500 recent crash reports) and progressive tenant quarantine thresholds (`internal/sandbox/engine.go`).
@@ -653,10 +649,74 @@ curl -X POST http://localhost:9081/api/sandbox/reset \
 
 ---
 
+## 🌐 Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding
+
+The broker features an integrated multi-region edge mesh topology and consistent-hashing ring (`internal/mesh/`) designed for global low-latency token delegation and distributed lease sharding across geographically dispersed Cloudflare edge nodes:
+
+### Core Architecture & Mesh Primitives
+
+1. **Consistent-Hashing Ring (`internal/mesh/ring.go`)**:
+   - **Virtual Nodes (vnodes)**: Places 128 virtual nodes per registered physical broker instance using cryptographic truncated 64-bit SHA-256 hashes, ensuring statistically uniform distribution with under 10% standard deviation skew across nodes.
+   - **Minimal Key Disruption ($K/N$)**: Node additions or graceful decommissions only reassign $1/N$-th of total keys across the ring, keeping all other lease vouchers active without cache invalidation storms.
+   - **Configurable Replication Factor**: Resolves both a primary coordinator node and $R-1$ distinct secondary replicas for every lease voucher and tenant key.
+
+2. **Authenticated Anti-Entropy Gossip Protocol (`internal/mesh/gossip.go`)**:
+   - **Periodic State Exchange**: Broadcasts authenticated membership state packets across regional peer nodes with monotonic heartbeat sequence numbers.
+   - **HMAC-SHA256 Cryptographic Tamper Defense**: Constant-time signature verification (`crypto/subtle.ConstantTimeCompare`) prevents unauthorized node injection or forged state broadcasts.
+   - **Failure Detection & Auto-Resurrection**: Automatically sweeps membership tables, transitioning uncontactable nodes through `Suspect` and `Dead` states upon heartbeat timeouts, and instantly resurrecting them upon receiving fresh gossip packets.
+
+3. **Anycast Connection Affinity & Latency Steering (`internal/mesh/affinity.go`)**:
+   - **Geographic Topology Database**: Maintains coordinates for major Cloudflare edge regions (`iad`, `sfo`, `ord`, `lhr`, `fra`, `ams`, `nrt`, `sin`, `hkg`, `syd`, `gru`, `jnb`).
+   - **Haversine Great-Circle Calculations**: Calculates real-time physical distances between client origin regions and candidate shard replicas.
+   - **Edge Affinity Policy**: Automatically serves requests locally if the local broker node is a healthy replica, or returns an Anycast steering recommendation pointing to the nearest healthy regional peer replica.
+
+### Usage & Example Commands
+
+```bash
+# 1. Inspect mesh cluster status and ring telemetry
+curl http://localhost:9081/api/mesh/status
+
+# 2. Inspect consistent hash ring vnode distribution
+curl http://localhost:9081/api/mesh/ring
+
+# 3. Locate primary and replica shard owners for a lease token
+curl "http://localhost:9081/api/mesh/locate?key=lease-token-alpha"
+
+# 4. Evaluate anycast edge affinity for a regional client
+curl "http://localhost:9081/api/mesh/affinity?key=lease-token-alpha&region=nrt"
+
+# 5. Register a new regional peer broker node
+curl -X POST http://localhost:9081/api/mesh/nodes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "broker-fra-01",
+    "region": "fra",
+    "address": "10.0.5.10:9081",
+    "vnodes": 128
+  }'
+
+# 6. Export an authenticated gossip anti-entropy packet
+curl http://localhost:9081/api/mesh/gossip/packet
+
+# 7. Ingest incoming gossip packet from peer node
+curl -X POST http://localhost:9081/api/mesh/gossip \
+  -H "Content-Type: application/json" \
+  -d @gossip_packet.json
+```
+
+---
+
 ## 📡 REST API Reference
 
 | Endpoint | Method | Auth | Description |
 | :--- | :---: | :---: | :--- |
+| `/api/mesh/status` | `GET` | Public | Overall mesh cluster health, active peers, vnodes, convergence score, and telemetry |
+| `/api/mesh/nodes` | `GET/POST/DELETE` | Public | List all mesh peers, register a new regional node, or gracefully deregister a peer |
+| `/api/mesh/ring` | `GET` | Public | Consistent hash ring inspection, total vnodes, and shard ownership percentages |
+| `/api/mesh/locate` | `GET` | Public | Locate primary and replica shard owners for a given key (`?key=...`) |
+| `/api/mesh/affinity` | `GET` | Public | Anycast edge connection affinity evaluation (`?key=...&region=...`) |
+| `/api/mesh/gossip` | `POST` | Public | Ingest authenticated anti-entropy gossip packet from peer node |
+| `/api/mesh/gossip/packet` | `GET` | Public | Export current node's HMAC-SHA256 authenticated gossip state packet |
 | `/api/sandbox/status` | `GET` | Public | Sandbox supervisor status, active instances, OOM interceptions, and panic recoveries |
 | `/api/sandbox/execute` | `POST` | Public | Execute guest Wasm workload under strict memory limits and gas metering |
 | `/api/sandbox/tenants` | `GET/POST` | Public | Inspect or update tenant sandbox isolation policies and quotas |

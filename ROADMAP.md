@@ -118,7 +118,29 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 
 ---
 
-## Release: v0.15.0 (Edge Key-Value Geo-Replication Mesh)
+## Release: v0.15.0 (Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding)
+- [x] Lightweight gossip protocol for cross-region broker topology discovery and state convergence.
+- [x] Consistent-hashing ring for distributed lease token sharding across active broker nodes.
+- [x] Edge connection affinity steering requests to nearest healthy regional replica.
+- [x] High-performance REST API endpoints (/api/mesh/*) and interactive glassmorphism topology panel in embedded dashboard.
+
+---
+
+## Release: v0.16.0 (Distributed eBPF Telemetry Pipeline & Anomaly Self-Healing Engine)
+- [ ] Kernel-level socket telemetry capturing TCP window sizing and packet retransmission metrics.
+- [ ] Real-time anomaly detection identifying degradation before HTTP timeout thresholds.
+- [ ] Autonomous mitigation triggering circuit breaking and rerouting within 10 milliseconds.
+
+---
+
+## Release: v0.17.0 (Adaptive Zero-Copy Compression & Brotli/Zstandard Edge Transcoder)
+- [ ] Dynamic payload inspection selecting optimal compression algorithm (Brotli, Zstandard, gzip).
+- [ ] Real-time byte streaming through pre-allocated compressor buffers with zero intermediate heap allocations.
+- [ ] Dynamic dictionary training for tenant API payloads reducing bandwidth by up to 85%.
+
+---
+
+## Release: v0.18.0 (Edge Key-Value Geo-Replication Mesh & Eventual Consistency Engine)
 - [ ] Multi-master asynchronous KV replication across active broker nodes with vector clock conflict resolution.
 - [ ] CRDT primitives for distributed counter and set synchronization across edge clusters.
 - [ ] Read-your-writes and monotonic-read consistency guarantees for regional tenant workers.

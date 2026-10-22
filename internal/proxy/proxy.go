@@ -35,6 +35,7 @@ type ProxyHandler struct {
 	ColoResolver     func(r *http.Request) (colo string, distanceKm float64)
 	SteeringResolver func(r *http.Request) (mode string, latencyUs float64, target string)
 	SandboxResolver  func(r *http.Request) (status string, memoryPages int)
+	MeshAffinityResolver func(r *http.Request) (nodeID, region, shardKey string, isLocal bool)
 	MaxRetries       int
 	MaxBodyBytes     int64
 }
@@ -191,6 +192,11 @@ func (p *ProxyHandler) SetSandboxResolver(resolver func(r *http.Request) (status
 	p.SandboxResolver = resolver
 }
 
+// SetMeshAffinityResolver attaches an optional edge mesh affinity resolver to annotate proxy telemetry headers.
+func (p *ProxyHandler) SetMeshAffinityResolver(resolver func(r *http.Request) (nodeID, region, shardKey string, isLocal bool)) {
+	p.MeshAffinityResolver = resolver
+}
+
 var errBodyTooLarge = errors.New("request body too large")
 
 func (p *ProxyHandler) bufferRequestBody(r *http.Request) ([]byte, error) {
@@ -328,6 +334,18 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 		if status, pages := p.SandboxResolver(r); status != "" {
 			w.Header().Set("X-CF-Broker-Sandbox-Status", status)
 			w.Header().Set("X-CF-Broker-Sandbox-Pages", strconv.Itoa(pages))
+		}
+	}
+	if p.MeshAffinityResolver != nil && r != nil {
+		if nodeID, region, shardKey, isLocal := p.MeshAffinityResolver(r); nodeID != "" {
+			w.Header().Set("X-CF-Broker-Mesh-Node", nodeID)
+			w.Header().Set("X-CF-Broker-Mesh-Region", region)
+			w.Header().Set("X-CF-Broker-Mesh-Shard", shardKey)
+			if isLocal {
+				w.Header().Set("X-CF-Broker-Mesh-Affinity", "local")
+			} else {
+				w.Header().Set("X-CF-Broker-Mesh-Affinity", "steered")
+			}
 		}
 	}
 
