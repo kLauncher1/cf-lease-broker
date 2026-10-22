@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-10-22
+
+### Added
+- **Multi-Region Anycast Edge Mesh Coordinator**: Implemented `internal/mesh/engine.go` and `internal/mesh/types.go` providing multi-region broker clustering, peer node topology management, background failure detection, and real-time mesh telemetry metrics.
+- **Consistent-Hashing Ring for Distributed Lease Token Sharding**: Implemented `internal/mesh/ring.go` with 128 virtual nodes per physical broker node, cryptographic 64-bit truncated SHA-256 hash distribution, binary-search ring traversals, primary and replica shard resolution with configurable replication factor, and minimal key rebalancing on peer membership changes.
+- **Lightweight Anti-Entropy Gossip Protocol & Failure Detection**: Implemented `internal/mesh/gossip.go` supporting periodic signed state broadcast, HMAC-SHA256 payload integrity verification, heartbeat sequence tracking, failure detection sweeps transitioning uncontactable nodes to Suspect and Dead, and dynamic node resurrection upon heartbeat recovery.
+- **Anycast Edge Connection Affinity & Routing Engine**: Implemented `internal/mesh/affinity.go` featuring a global edge regional coordinate database, Great-Circle Haversine distance computations, and intelligent routing affinity steering requests either to the local replica or forwarding them to the nearest healthy regional peer replica.
+- **Mesh REST API Endpoints**: Implemented `internal/mesh/handler.go` mounting `/api/mesh/*` in `main.go`, exposing `/api/mesh/status`, `/api/mesh/nodes` (GET, POST, DELETE), `/api/mesh/ring`, `/api/mesh/locate`, `/api/mesh/affinity`, `/api/mesh/gossip`, and `/api/mesh/gossip/packet` with strict 64KB request body bounds against buffer exhaustion attacks.
+- **Interactive Glassmorphism Edge Mesh Dashboard Panel**: Enhanced `web/dist/index.html` with a dedicated control card featuring live KPI telemetry counters (Local Node & Region, Active Mesh Peers, Hash Ring Total Vnodes, State Convergence %, and Affinity Routing Hits), a dynamic peer topology table with shard percentages, an interactive key shard locator & edge affinity resolver, a peer registration form, and live anti-entropy gossip synchronization.
+- **Comprehensive Edge Mesh Test Suite**: Added 10 exhaustive unit and integration tests in `internal/mesh/mesh_test.go` covering ring distribution uniformity, minimal key disruption on node removal, replication factor uniqueness, HMAC signature validation and tampering rejection, failure detector state transitions and resurrection, regional affinity steering, REST API handlers, 64KB request body bounding, and 40-goroutine concurrent execution.
+
+### Changed
+- Mounted `/api/mesh/` routes on HTTP mux and initialized `MeshEngine` and `MeshHandler` in `main.go`.
+- Added `MeshAffinityResolver` hook to `ProxyHandler` (`internal/proxy/proxy.go`) and configured downstream telemetry headers (`X-CF-Broker-Mesh-Node`, `X-CF-Broker-Mesh-Region`, `X-CF-Broker-Mesh-Shard`, `X-CF-Broker-Mesh-Affinity`).
+- Bumped application version to `0.15.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.14.0] - 2026-10-17
 
 ### Added

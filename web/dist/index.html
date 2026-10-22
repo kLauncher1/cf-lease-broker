@@ -1057,6 +1057,123 @@ export default {
       <div id="sandbox-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
     </section>
 
+    <!-- Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding Panel -->
+    <section class="mesh-card" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 16px; font-weight: 700; color: #fff;">Multi-Region Anycast Edge Mesh &amp; Dynamic Peer Sharding</span>
+          <span id="mesh-status-badge" style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 3px 10px; border-radius: 999px; font-weight: 600;">Consistent Hash Ring Active</span>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button class="action-btn" onclick="exportGossipPacket()" style="padding: 6px 14px; font-size: 12px; background: rgba(255,255,255,0.06);">Export Gossip Packet</button>
+          <button class="action-btn" onclick="triggerGossipExchange()" style="padding: 6px 14px; font-size: 12px; background: linear-gradient(135deg, #0284c7, #38bdf8); color: #fff;">Sync Anti-Entropy</button>
+        </div>
+      </div>
+
+      <!-- Telemetry Counters -->
+      <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 20px;">
+        <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Local Node &amp; Region</div>
+          <div id="mesh-local-node" style="font-size: 16px; font-weight: 700; color: #38bdf8; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Loading...</div>
+          <div id="mesh-local-region" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Anycast Gateway</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Active Mesh Peers</div>
+          <div id="mesh-active-peers" style="font-size: 20px; font-weight: 700; color: #10b981; margin-top: 4px;">0</div>
+          <div id="mesh-total-nodes-meta" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Cross-Region Quorum</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Hash Ring Vnodes</div>
+          <div id="mesh-ring-vnodes" style="font-size: 20px; font-weight: 700; color: #fbbf24; margin-top: 4px;">0</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">SHA-256 Partition Points</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">State Convergence</div>
+          <div id="mesh-convergence-score" style="font-size: 20px; font-weight: 700; color: #a855f7; margin-top: 4px;">100.0%</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Anti-Entropy Agreement</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--border-subtle);">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Affinity Routing</div>
+          <div id="mesh-affinity-ratio" style="font-size: 20px; font-weight: 700; color: #f43f5e; margin-top: 4px;">0 Hits</div>
+          <div id="mesh-affinity-meta" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Local vs Steered</div>
+        </div>
+      </div>
+
+      <!-- Peer Topology Table & Shard Locator Layout -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+        <!-- Left: Peer Topology & Shard Distribution -->
+        <div style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Regional Peer Topology &amp; Ring Distribution</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Replication Factor: 3</span>
+          </div>
+          <div style="max-height: 180px; overflow-y: auto; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle);">
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono', monospace;">
+              <thead>
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); color: var(--text-muted); text-align: left;">
+                  <th style="padding: 6px 10px;">Node ID</th>
+                  <th style="padding: 6px 10px;">Region</th>
+                  <th style="padding: 6px 10px;">Address</th>
+                  <th style="padding: 6px 10px; text-align: center;">Ring %</th>
+                  <th style="padding: 6px 10px; text-align: right;">Status</th>
+                </tr>
+              </thead>
+              <tbody id="mesh-nodes-tbody">
+                <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 12px;">Loading mesh topology...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Right: Interactive Key Shard Locator & Edge Affinity Resolver -->
+        <div style="display: flex; flex-direction: column; gap: 10px; background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Shard Ownership &amp; Anycast Affinity Resolver</span>
+            <span style="font-size: 11px; color: var(--text-muted);">Sub-millisecond Hash Ring</span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="mesh-locate-key" placeholder="Token / Key (e.g. lease-voucher-884)" value="lease-token-alpha" style="flex: 1; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none;">
+            <select id="mesh-client-region" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 11px; outline: none;">
+              <option value="iad">Client: IAD (US East)</option>
+              <option value="sfo">Client: SFO (US West)</option>
+              <option value="lhr">Client: LHR (London)</option>
+              <option value="fra">Client: FRA (Frankfurt)</option>
+              <option value="nrt">Client: NRT (Tokyo)</option>
+              <option value="sin">Client: SIN (Singapore)</option>
+              <option value="syd">Client: SYD (Sydney)</option>
+              <option value="gru">Client: GRU (São Paulo)</option>
+            </select>
+            <button class="action-btn" onclick="locateAndResolveAffinity()" style="padding: 6px 14px; font-size: 11px; background: #0284c7; white-space: nowrap;">Locate Shard</button>
+          </div>
+          <div id="mesh-locate-result" style="max-height: 120px; overflow-y: auto; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle); padding: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted);">
+            Enter a lease token or key and client region to locate primary and replica ring owners...
+          </div>
+        </div>
+      </div>
+
+      <!-- Peer Registration Form & Live Gossip Stream -->
+      <div style="display: flex; gap: 14px; align-items: center; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; margin-bottom: 10px;">
+        <span style="font-size: 11px; font-weight: 600; color: var(--text-main); white-space: nowrap;">Register Peer:</span>
+        <input type="text" id="mesh-peer-id" placeholder="Node ID (e.g. broker-fra-01)" style="flex: 1; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 5px 8px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none;">
+        <select id="mesh-peer-region" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 5px 8px; border-radius: 6px; font-size: 11px; outline: none;">
+          <option value="iad">iad (Ashburn)</option>
+          <option value="sfo">sfo (San Francisco)</option>
+          <option value="ord">ord (Chicago)</option>
+          <option value="lhr">lhr (London)</option>
+          <option value="fra">fra (Frankfurt)</option>
+          <option value="ams">ams (Amsterdam)</option>
+          <option value="nrt">nrt (Tokyo)</option>
+          <option value="sin">sin (Singapore)</option>
+          <option value="syd">syd (Sydney)</option>
+          <option value="gru">gru (São Paulo)</option>
+        </select>
+        <input type="text" id="mesh-peer-addr" placeholder="Address (e.g. 10.0.5.10:9081)" style="flex: 1; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 5px 8px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none;">
+        <button class="action-btn" onclick="joinMeshPeer()" style="padding: 5px 14px; font-size: 11px; background: #059669; white-space: nowrap;">+ Link Peer</button>
+      </div>
+
+      <div id="mesh-gossip-stream" style="display: none; padding: 10px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 140px; overflow-y: auto;"></div>
+    </section>
+
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
       <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
@@ -1280,6 +1397,7 @@ export default {
         loadRotatorState();
         loadSteeringState();
         loadSandboxState();
+        loadMeshState();
       } catch (err) {
         console.error('Failed to load state:', err);
       }
@@ -2906,6 +3024,205 @@ export default {
         `;
       } catch (err) {
         diag.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function loadMeshState() {
+      try {
+        const [statsRes, nodesRes, ringRes] = await Promise.all([
+          fetch('/api/mesh/status').then(r => r.json()).catch(() => null),
+          fetch('/api/mesh/nodes').then(r => r.json()).catch(() => []),
+          fetch('/api/mesh/ring').then(r => r.json()).catch(() => null)
+        ]);
+
+        if (statsRes) {
+          const nodeEl = document.getElementById('mesh-local-node');
+          if (nodeEl) nodeEl.textContent = statsRes.local_node_id || 'broker-iad-local';
+          const regEl = document.getElementById('mesh-local-region');
+          if (regEl) regEl.textContent = `Region: ${(statsRes.local_region || 'iad').toUpperCase()} · Anycast Active`;
+
+          const actPeersEl = document.getElementById('mesh-active-peers');
+          if (actPeersEl) actPeersEl.textContent = `${statsRes.active_nodes} / ${statsRes.total_nodes} Active`;
+          const metaEl = document.getElementById('mesh-total-nodes-meta');
+          if (metaEl) metaEl.textContent = `${statsRes.suspect_nodes} Suspect · ${statsRes.dead_nodes} Dead`;
+
+          const vnodesEl = document.getElementById('mesh-ring-vnodes');
+          if (vnodesEl) vnodesEl.textContent = `${statsRes.ring_vnodes} Vnodes`;
+
+          const convEl = document.getElementById('mesh-convergence-score');
+          if (convEl) {
+            const pct = (statsRes.convergence_score * 100).toFixed(1);
+            convEl.textContent = `${pct}%`;
+            convEl.style.color = statsRes.convergence_score >= 0.8 ? '#10b981' : '#f38020';
+          }
+
+          const affEl = document.getElementById('mesh-affinity-ratio');
+          if (affEl) {
+            affEl.textContent = `${Number(statsRes.shards_queried || 0).toLocaleString()} Shards`;
+          }
+          const affMetaEl = document.getElementById('mesh-affinity-meta');
+          if (affMetaEl) {
+            affMetaEl.textContent = `Local: ${Number(statsRes.affinity_local_hits || 0).toLocaleString()} · Steered: ${Number(statsRes.affinity_remote_steers || 0).toLocaleString()}`;
+          }
+        }
+
+        const tbody = document.getElementById('mesh-nodes-tbody');
+        if (tbody && Array.isArray(nodesRes)) {
+          if (nodesRes.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 12px;">No active mesh peers found.</td></tr>`;
+          } else {
+            const dist = (ringRes && ringRes.distribution) ? ringRes.distribution : {};
+            tbody.innerHTML = nodesRes.map(n => {
+              const ringPct = dist[n.id] ? `${dist[n.id].toFixed(1)}%` : '0.0%';
+              let statusColor = '#10b981';
+              let statusBg = 'rgba(16,185,129,0.15)';
+              if (n.status === 'suspect') {
+                statusColor = '#f38020';
+                statusBg = 'rgba(243,128,32,0.15)';
+              } else if (n.status === 'dead') {
+                statusColor = '#ef4444';
+                statusBg = 'rgba(239,68,68,0.15)';
+              }
+              return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                  <td style="padding: 6px 10px; color: #fff; font-weight: 600;">${escapeHtml(n.id)}</td>
+                  <td style="padding: 6px 10px;"><span style="background: rgba(56,189,248,0.15); color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600;">${escapeHtml((n.region || '').toUpperCase())}</span></td>
+                  <td style="padding: 6px 10px; color: var(--text-muted); font-size: 10px;">${escapeHtml(n.address)}</td>
+                  <td style="padding: 6px 10px; text-align: center; color: #fbbf24;">${ringPct}</td>
+                  <td style="padding: 6px 10px; text-align: right;">
+                    <span style="font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600; background: ${statusBg}; color: ${statusColor};">
+                      ${escapeHtml((n.status || 'ACTIVE').toUpperCase())}
+                    </span>
+                  </td>
+                </tr>
+              `;
+            }).join('');
+          }
+        }
+      } catch (err) {
+        console.error('loadMeshState error:', err);
+      }
+    }
+
+    async function locateAndResolveAffinity() {
+      const key = document.getElementById('mesh-locate-key').value.trim();
+      const region = document.getElementById('mesh-client-region').value;
+      const resBox = document.getElementById('mesh-locate-result');
+
+      if (!key) {
+        alert('Please enter a lease token or key name');
+        return;
+      }
+
+      resBox.innerHTML = `Querying consistent hash ring and evaluating anycast edge affinity...`;
+
+      try {
+        const [locRes, affRes] = await Promise.all([
+          fetch(`/api/mesh/locate?key=${encodeURIComponent(key)}`).then(r => r.json()),
+          fetch(`/api/mesh/affinity?key=${encodeURIComponent(key)}&region=${encodeURIComponent(region)}`).then(r => r.json())
+        ]);
+
+        if (locRes.error) {
+          resBox.innerHTML = `<span style="color: #ef4444;">Locate Error: ${escapeHtml(locRes.error)}</span>`;
+          return;
+        }
+
+        const p = locRes.primary_node;
+        const replicas = locRes.replica_nodes || [];
+        const isLocal = affRes.is_local_serve;
+        const affinityBadge = isLocal
+          ? `<span style="background: rgba(16,185,129,0.2); color: #10b981; padding: 2px 6px; border-radius: 4px; font-weight: 700;">LOCAL SERVE</span>`
+          : `<span style="background: rgba(56,189,248,0.2); color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-weight: 700;">ANYCAST STEER</span>`;
+
+        resBox.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span>${affinityBadge} · Shard Key: <strong style="color: #fff;">${escapeHtml(key)}</strong></span>
+            <span style="color: #94a3b8; font-size: 10px;">Hash: <code>${locRes.key_hash}</code></span>
+          </div>
+          <div>Primary Shard Holder: <strong style="color: #fbbf24;">${escapeHtml(p.id)}</strong> (${escapeHtml(p.region.toUpperCase())} · <code>${escapeHtml(p.address)}</code>)</div>
+          <div>Replicas (${replicas.length}): <span style="color: #38bdf8;">${replicas.map(r => `${escapeHtml(r.id)} [${escapeHtml(r.region.toUpperCase())}]`).join(', ') || 'None'}</span></div>
+          <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">
+            Target Node: <strong style="color: #fff;">${escapeHtml(affRes.selected_node.id)}</strong> · Distance to Client (${region.toUpperCase()}): <span style="color: #10b981;">${Number(affRes.distance_km).toFixed(1)} km</span> · Policy: <em>${escapeHtml(affRes.reason)}</em>
+          </div>
+        `;
+        loadMeshState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function joinMeshPeer() {
+      const id = document.getElementById('mesh-peer-id').value.trim();
+      const region = document.getElementById('mesh-peer-region').value;
+      const addr = document.getElementById('mesh-peer-addr').value.trim();
+
+      if (!id || !addr) {
+        alert('Please specify both Node ID and Address');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/mesh/nodes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: id,
+            region: region,
+            address: addr,
+            vnodes: 128
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('mesh-peer-id').value = '';
+          document.getElementById('mesh-peer-addr').value = '';
+          loadMeshState();
+        } else {
+          alert('Failed to register peer: ' + (data.error || res.statusText));
+        }
+      } catch (err) {
+        alert('Network error: ' + err.message);
+      }
+    }
+
+    async function exportGossipPacket() {
+      const box = document.getElementById('mesh-gossip-stream');
+      box.style.display = 'block';
+      box.textContent = 'Generating authenticated anti-entropy gossip packet...';
+
+      try {
+        const res = await fetch('/api/mesh/gossip/packet');
+        const data = await res.json();
+        box.innerHTML = `
+          <div style="color: #38bdf8; font-weight: 700; margin-bottom: 4px;">Authenticated Gossip Packet (HMAC-SHA256 Signed)</div>
+          <pre style="color: #f8fafc; font-size: 10px; max-height: 110px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 4px;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+        `;
+      } catch (err) {
+        box.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function triggerGossipExchange() {
+      const box = document.getElementById('mesh-gossip-stream');
+      box.style.display = 'block';
+      box.textContent = 'Triggering anti-entropy state synchronization with edge mesh...';
+
+      try {
+        const pktRes = await fetch('/api/mesh/gossip/packet');
+        const pkt = await pktRes.json();
+        const res = await fetch('/api/mesh/gossip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(pkt)
+        });
+        const data = await res.json();
+        box.innerHTML = `
+          <div style="color: #10b981; font-weight: 700; margin-bottom: 4px;">Mesh State Synchronized (Anti-Entropy Converged)</div>
+          <div>Receiver: <strong style="color: #fff;">${escapeHtml(data.receiver_id)}</strong> · Nodes Known: <strong style="color: #38bdf8;">${data.nodes_known}</strong> · Status: <span style="color: #10b981;">${escapeHtml(data.status)}</span></div>
+        `;
+        loadMeshState();
+      } catch (err) {
+        box.innerHTML = `<span style="color: #ef4444;">Sync Error: ${escapeHtml(err.message)}</span>`;
       }
     }
 

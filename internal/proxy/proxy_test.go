@@ -459,3 +459,43 @@ func TestProxySteeringResolverIntegration(t *testing.T) {
 		t.Fatalf("expected X-CF-Broker-Steering-Target header worker-iad-01, got %s", rec.Header().Get("X-CF-Broker-Steering-Target"))
 	}
 }
+
+func TestProxyMeshAffinityResolverIntegration(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"mesh-affinity-routed"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	handler.SetMeshAffinityResolver(func(r *http.Request) (string, string, string, bool) {
+		return "broker-iad-01", "iad", "shard-user-tok", true
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/endpoint", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-CF-Broker-Mesh-Node") != "broker-iad-01" {
+		t.Fatalf("expected X-CF-Broker-Mesh-Node header broker-iad-01, got %s", rec.Header().Get("X-CF-Broker-Mesh-Node"))
+	}
+	if rec.Header().Get("X-CF-Broker-Mesh-Region") != "iad" {
+		t.Fatalf("expected X-CF-Broker-Mesh-Region header iad, got %s", rec.Header().Get("X-CF-Broker-Mesh-Region"))
+	}
+	if rec.Header().Get("X-CF-Broker-Mesh-Shard") != "shard-user-tok" {
+		t.Fatalf("expected X-CF-Broker-Mesh-Shard header shard-user-tok, got %s", rec.Header().Get("X-CF-Broker-Mesh-Shard"))
+	}
+	if rec.Header().Get("X-CF-Broker-Mesh-Affinity") != "local" {
+		t.Fatalf("expected X-CF-Broker-Mesh-Affinity header local, got %s", rec.Header().Get("X-CF-Broker-Mesh-Affinity"))
+	}
+}

@@ -17,6 +17,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/cloudflare"
 	"github.com/kLauncher1/cf-lease-broker/internal/compiler"
 	"github.com/kLauncher1/cf-lease-broker/internal/config"
+	"github.com/kLauncher1/cf-lease-broker/internal/mesh"
 	"github.com/kLauncher1/cf-lease-broker/internal/mtls"
 	"github.com/kLauncher1/cf-lease-broker/internal/proxy"
 	"github.com/kLauncher1/cf-lease-broker/internal/quota"
@@ -31,7 +32,7 @@ import (
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.14.0"
+	Version = "0.15.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -262,6 +263,47 @@ func main() {
 		return string(sandbox.StatusIdle), sandbox.DefaultInitialMemoryPages
 	})
 
+	// Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding
+	meshNodeID := os.Getenv("CF_MESH_NODE_ID")
+	if meshNodeID == "" {
+		meshNodeID = "broker-iad-" + port
+	}
+	meshRegion := os.Getenv("CF_MESH_REGION")
+	if meshRegion == "" {
+		meshRegion = "iad"
+	}
+	meshSecret := []byte(os.Getenv("CF_MESH_SECRET"))
+	if len(meshSecret) == 0 {
+		meshSecret = []byte("cf-lease-mesh-default-secret-key")
+	}
+	meshCfg := mesh.DefaultMeshConfig(meshNodeID, meshRegion, "127.0.0.1:"+port)
+	meshCfg.SecretKey = meshSecret
+	meshEngine := mesh.NewMeshEngine(meshCfg)
+	_ = meshEngine.RegisterPeer(mesh.PeerNode{ID: "broker-lhr-01", Address: "10.0.2.10:9081", Region: "lhr", Vnodes: 128, Status: mesh.NodeStatusActive})
+	_ = meshEngine.RegisterPeer(mesh.PeerNode{ID: "broker-nrt-01", Address: "10.0.3.10:9081", Region: "nrt", Vnodes: 128, Status: mesh.NodeStatusActive})
+	_ = meshEngine.RegisterPeer(mesh.PeerNode{ID: "broker-sfo-01", Address: "10.0.4.10:9081", Region: "sfo", Vnodes: 128, Status: mesh.NodeStatusActive})
+	meshEngine.Start()
+	defer meshEngine.Stop()
+	meshHandler := mesh.NewMeshHandler(meshEngine)
+
+	proxyHandler.SetMeshAffinityResolver(func(r *http.Request) (string, string, string, bool) {
+		clientRegion := r.Header.Get("CF-IPCountry")
+		if clientRegion == "" {
+			clientRegion = r.Header.Get("X-Region")
+		}
+		if clientRegion == "" {
+			clientRegion = "iad"
+		}
+		shardKey := r.Header.Get("X-Tenant-ID")
+		if shardKey == "" {
+			shardKey = r.URL.Path
+		}
+		if dec, err := meshEngine.ResolveAffinity(clientRegion, shardKey); err == nil && dec != nil {
+			return dec.SelectedNode.ID, dec.SelectedNode.Region, shardKey, dec.IsLocalServe
+		}
+		return meshNodeID, meshRegion, shardKey, true
+	})
+
 	// Seed encrypted credentials into vault and poolMgr
 	for _, acc := range activeConfig.Accounts {
 		poolMgr.UpsertAccount(acc.ToAccountStatus())
@@ -334,6 +376,10 @@ func main() {
 	// Edge Wasm Sandbox Memory Limiter & Crash Isolation (/api/sandbox/*)
 	mux.Handle("/api/sandbox/", sandboxHandler)
 	mux.Handle("/api/sandbox", sandboxHandler)
+
+	// Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding (/api/mesh/*)
+	mux.Handle("/api/mesh/", meshHandler)
+	mux.Handle("/api/mesh", meshHandler)
 
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
 	mux.HandleFunc("/api/auth/revoke", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleRevokeToken)).ServeHTTP)
@@ -437,6 +483,7 @@ func main() {
 	fmt.Println(" 🔄 Autonomous Edge Token Rotator & Revocation Mesh Active (/api/rotator/*)")
 	fmt.Println(" ⚡ Zero-Overhead HTTP/3 eBPF Packet Steering Active (/api/steering/*)")
 	fmt.Println(" 📦 Edge Wasm Sandbox Memory Limiter & Crash Isolation Active (/api/sandbox/*)")
+	fmt.Println(" 🌐 Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding Active (/api/mesh/*)")
 	fmt.Println(" 💡 Standalone Single Binary with Embedded Zero-Dependency UI")
 	fmt.Println("=================================================================")
 

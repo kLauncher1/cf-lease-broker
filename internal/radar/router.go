@@ -72,8 +72,10 @@ type candidateScore struct {
 // ResolveOptimalColo resolves the lowest-latency healthy Cloudflare PoP for given client coordinates.
 func (rr *RadarRouter) ResolveOptimalColo(clientLoc GeoPoint, allowDegraded bool) RouteRecommendation {
 	start := time.Now()
+	rr.mu.RLock()
 	allStats := rr.probeEngine.GetAllStats()
 	popList := rr.pops
+	rr.mu.RUnlock()
 
 	var candidates []candidateScore
 	for _, pop := range popList {
@@ -335,10 +337,10 @@ func (rr *RadarRouter) GetStatusSummary() RadarStatus {
 		DegradedPoPs:          degraded,
 		OfflinePoPs:           offline,
 		AverageGlobalRTTMs:    avgRTT,
-		TotalProbesDispatched: rr.probeEngine.TotalProbes(),
+		TotalProbesDispatched: rr.probeEngine.totalProbes,
 		RecentBGPAlerts:       bgpCount,
 		TotalMigrations:       migCount,
-		LastProbeRun:          rr.probeEngine.LastProbeRun(),
+		LastProbeRun:          rr.probeEngine.lastProbeRun,
 	}
 }
 
