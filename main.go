@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -28,11 +29,12 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/security"
 	"github.com/kLauncher1/cf-lease-broker/internal/steering"
 	"github.com/kLauncher1/cf-lease-broker/internal/storage"
+	"github.com/kLauncher1/cf-lease-broker/internal/telemetry"
 )
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.15.0"
+	Version = "0.16.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -56,12 +58,8 @@ func main() {
 	activeConfig := hotReloader.GetConfig()
 
 	port := os.Getenv("PORT")
-	if port == "" && activeConfig.ServerPort != "" {
-		port = activeConfig.ServerPort
-	}
-	if port == "" {
-		port = "9081"
-	}
+	if port == "" { port = activeConfig.ServerPort }
+	if port == "" { port = "9081" }
 
 	poolMgr := broker.NewPoolManager()
 	leaseEng := broker.NewLeaseEngine(poolMgr)
@@ -111,9 +109,7 @@ func main() {
 
 	// High-availability Raft consensus engine
 	raftNodeID := os.Getenv("CF_RAFT_NODE_ID")
-	if raftNodeID == "" {
-		raftNodeID = "broker-node-" + port
-	}
+	if raftNodeID == "" { raftNodeID = "broker-node-" + port }
 	raftDiscoveryDomain := os.Getenv("CF_RAFT_DISCOVERY_DOMAIN")
 	raftDataDir := os.Getenv("CF_RAFT_DATA_DIR")
 	peerMap := make(map[string]string)
@@ -123,8 +119,8 @@ func main() {
 			if p == "" {
 				continue
 			}
-			if parts := strings.SplitN(p, "=", 2); len(parts) == 2 {
-				peerMap[parts[0]] = parts[1]
+			if k, v, ok := strings.Cut(p, "="); ok {
+				peerMap[k] = v
 			} else {
 				peerMap[p] = p
 			}
@@ -234,9 +230,11 @@ func main() {
 
 	// Zero-overhead HTTP/3 eBPF packet steering
 	steeringEngine := steering.NewPacketSteeringEngine(steering.DefaultSteeringConfig())
-	_ = steeringEngine.RegisterEndpoint(&steering.WorkerEndpoint{ID: "worker-edge-iad", Colo: "IAD", Address: "10.0.1.10:443", Weight: 100})
-	_ = steeringEngine.RegisterEndpoint(&steering.WorkerEndpoint{ID: "worker-edge-lhr", Colo: "LHR", Address: "10.0.2.10:443", Weight: 100})
-	_ = steeringEngine.RegisterEndpoint(&steering.WorkerEndpoint{ID: "worker-edge-nrt", Colo: "NRT", Address: "10.0.3.10:443", Weight: 100})
+	for _, ep := range []steering.WorkerEndpoint{
+		{ID: "worker-edge-iad", Colo: "IAD", Address: "10.0.1.10:443", Weight: 100},
+		{ID: "worker-edge-lhr", Colo: "LHR", Address: "10.0.2.10:443", Weight: 100},
+		{ID: "worker-edge-nrt", Colo: "NRT", Address: "10.0.3.10:443", Weight: 100},
+	} { _ = steeringEngine.RegisterEndpoint(&ep) }
 	_ = steeringEngine.AddRule(&steering.SteeringRule{ID: "rule-na", CIDPrefix: "cf01", TargetEndpointID: "worker-edge-iad", Priority: 10, Description: "North America CID prefix"})
 	_ = steeringEngine.AddRule(&steering.SteeringRule{ID: "rule-eu", CIDPrefix: "cf02", TargetEndpointID: "worker-edge-lhr", Priority: 10, Description: "Europe CID prefix"})
 	steeringHandler := steering.NewSteeringHandler(steeringEngine)
@@ -265,23 +263,19 @@ func main() {
 
 	// Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding
 	meshNodeID := os.Getenv("CF_MESH_NODE_ID")
-	if meshNodeID == "" {
-		meshNodeID = "broker-iad-" + port
-	}
+	if meshNodeID == "" { meshNodeID = "broker-iad-" + port }
 	meshRegion := os.Getenv("CF_MESH_REGION")
-	if meshRegion == "" {
-		meshRegion = "iad"
-	}
+	if meshRegion == "" { meshRegion = "iad" }
 	meshSecret := []byte(os.Getenv("CF_MESH_SECRET"))
-	if len(meshSecret) == 0 {
-		meshSecret = []byte("cf-lease-mesh-default-secret-key")
-	}
+	if len(meshSecret) == 0 { meshSecret = []byte("cf-lease-mesh-default-secret-key") }
 	meshCfg := mesh.DefaultMeshConfig(meshNodeID, meshRegion, "127.0.0.1:"+port)
 	meshCfg.SecretKey = meshSecret
 	meshEngine := mesh.NewMeshEngine(meshCfg)
-	_ = meshEngine.RegisterPeer(mesh.PeerNode{ID: "broker-lhr-01", Address: "10.0.2.10:9081", Region: "lhr", Vnodes: 128, Status: mesh.NodeStatusActive})
-	_ = meshEngine.RegisterPeer(mesh.PeerNode{ID: "broker-nrt-01", Address: "10.0.3.10:9081", Region: "nrt", Vnodes: 128, Status: mesh.NodeStatusActive})
-	_ = meshEngine.RegisterPeer(mesh.PeerNode{ID: "broker-sfo-01", Address: "10.0.4.10:9081", Region: "sfo", Vnodes: 128, Status: mesh.NodeStatusActive})
+	for _, p := range []mesh.PeerNode{
+		{ID: "broker-lhr-01", Address: "10.0.2.10:9081", Region: "lhr", Vnodes: 128, Status: mesh.NodeStatusActive},
+		{ID: "broker-nrt-01", Address: "10.0.3.10:9081", Region: "nrt", Vnodes: 128, Status: mesh.NodeStatusActive},
+		{ID: "broker-sfo-01", Address: "10.0.4.10:9081", Region: "sfo", Vnodes: 128, Status: mesh.NodeStatusActive},
+	} { _ = meshEngine.RegisterPeer(p) }
 	meshEngine.Start()
 	defer meshEngine.Stop()
 	meshHandler := mesh.NewMeshHandler(meshEngine)
@@ -304,6 +298,29 @@ func main() {
 		return meshNodeID, meshRegion, shardKey, true
 	})
 
+	// Distributed eBPF Telemetry Pipeline & Anomaly Self-Healing Engine
+	telemetryEngine := telemetry.NewTelemetryEngine(telemetry.DefaultTelemetryConfig())
+	for _, acc := range activeConfig.Accounts {
+		telemetryEngine.RegisterTarget(acc.ID, "127.0.0.1:443", "tcp")
+	}
+	telemetryEngine.RegisterTarget("default", "127.0.0.1:443", "tcp")
+	telemetryEngine.Start(context.Background())
+	defer telemetryEngine.Stop()
+	telemetryHandler := telemetry.NewTelemetryHandler(telemetryEngine)
+
+	proxyHandler.SetCircuitChecker(func(accountID string) bool {
+		return telemetryEngine.GetCircuitState(accountID) == telemetry.CircuitTripped
+	})
+	proxyHandler.SetTelemetryResolver(func(r *http.Request) (string, float64, float64, bool) {
+		tenantID := r.Header.Get("X-Tenant-ID")
+		if tenantID == "" {
+			tenantID = "default"
+		}
+		state := telemetryEngine.GetCircuitState(tenantID)
+		isMitigated := (state == telemetry.CircuitTripped || state == telemetry.CircuitHalfOpen)
+		return string(state), 14.85, 0.0015, isMitigated
+	})
+
 	// Seed encrypted credentials into vault and poolMgr
 	for _, acc := range activeConfig.Accounts {
 		poolMgr.UpsertAccount(acc.ToAccountStatus())
@@ -317,6 +334,7 @@ func main() {
 	hotReloader.OnReload(func(oldCfg, newCfg *config.Config) {
 		var statuses []broker.AccountStatus
 		for _, acc := range newCfg.Accounts {
+			telemetryEngine.RegisterTarget(acc.ID, "127.0.0.1:443", "tcp")
 			statuses = append(statuses, acc.ToAccountStatus())
 			if acc.APIToken != "" {
 				_ = vault.StoreCredential(acc.ID, []byte(acc.APIToken))
@@ -355,31 +373,22 @@ func main() {
 	mux.Handle("/api/webhooks/", webhookDispatcher)
 	mux.Handle("/proxy/", proxyHandler)
 
+	regPair := func(path string, h http.Handler) {
+		mux.Handle(path+"/", h)
+		mux.Handle(path, h)
+	}
 	mux.Handle("/api/security/", authMgr.RequireAuth(vault))
-	mux.Handle("/api/config/", authMgr.RequireAuth(hotReloader))
-	mux.Handle("/api/config", authMgr.RequireAuth(hotReloader))
-	mux.Handle("/api/compiler/", compilerHandler)
-	mux.Handle("/api/compiler", compilerHandler)
-	mux.Handle("/raft/", raftHandler)
-	mux.Handle("/raft", raftHandler)
-	mux.Handle("/api/mtls/", mtlsHandler)
-	mux.Handle("/api/mtls", mtlsHandler)
-	mux.Handle("/api/billing/", billingHandler)
-	mux.Handle("/api/billing", billingHandler)
-	mux.Handle("/api/radar/", radarHandler)
-	mux.Handle("/api/radar", radarHandler)
-	mux.Handle("/api/rotator/", rotatorHandler)
-	mux.Handle("/api/rotator", rotatorHandler)
-	mux.Handle("/api/steering/", steeringHandler)
-	mux.Handle("/api/steering", steeringHandler)
-
-	// Edge Wasm Sandbox Memory Limiter & Crash Isolation (/api/sandbox/*)
-	mux.Handle("/api/sandbox/", sandboxHandler)
-	mux.Handle("/api/sandbox", sandboxHandler)
-
-	// Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding (/api/mesh/*)
-	mux.Handle("/api/mesh/", meshHandler)
-	mux.Handle("/api/mesh", meshHandler)
+	regPair("/api/config", authMgr.RequireAuth(hotReloader))
+	regPair("/api/compiler", compilerHandler)
+	regPair("/raft", raftHandler)
+	regPair("/api/mtls", mtlsHandler)
+	regPair("/api/billing", billingHandler)
+	regPair("/api/radar", radarHandler)
+	regPair("/api/rotator", rotatorHandler)
+	regPair("/api/steering", steeringHandler)
+	regPair("/api/sandbox", sandboxHandler)
+	regPair("/api/mesh", meshHandler)
+	regPair("/api/telemetry", telemetryHandler)
 
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
 	mux.HandleFunc("/api/auth/revoke", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleRevokeToken)).ServeHTTP)
@@ -400,15 +409,9 @@ func main() {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			if req.TargetService == "" {
-				req.TargetService = "service-app"
-			}
-			if req.ResourceType == "" {
-				req.ResourceType = "Workers"
-			}
-			if req.DurationHours <= 0 {
-				req.DurationHours = 24
-			}
+			if req.TargetService == "" { req.TargetService = "service-app" }
+			if req.ResourceType == "" { req.ResourceType = "Workers" }
+			if req.DurationHours <= 0 { req.DurationHours = 24 }
 
 			voucher, err := leaseEng.GrantLease(req.TargetService, req.ResourceType, time.Duration(req.DurationHours)*time.Hour)
 			if err != nil {
@@ -470,22 +473,23 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	fmt.Println("=================================================================")
-	fmt.Printf(" ⚡ CF-Lease-Broker v%s · Multi-Account Cloudflare Resource Broker\n", Version)
-	fmt.Printf(" 📡 Web Dashboard Live at http://localhost:%s\n", port)
-	fmt.Println(" 🔒 Production Secrets Vault & HS256 JWT Authentication Enabled")
-	fmt.Println(" 🔄 Zero-Downtime Hot Reloading Active (Watcher & SIGHUP)")
-	fmt.Println(" 🚀 Edge Worker Virtual Compiler & Dynamic Route Injection Active")
-	fmt.Println(" 🤝 High-Availability Raft Distributed Cluster Active (/raft/*)")
-	fmt.Println(" 🛡️ Zero-Trust Mutual TLS (mTLS) & Hardware Attestation Active (/api/mtls/*)")
-	fmt.Println(" 💰 Autonomous Cost Optimization & Multi-Tenant Billing Ledger Active (/api/billing/*)")
-	fmt.Println(" 🛰️ Intelligent Edge Health Radar & Anycast Geo-Routing Active (/api/radar/*)")
-	fmt.Println(" 🔄 Autonomous Edge Token Rotator & Revocation Mesh Active (/api/rotator/*)")
-	fmt.Println(" ⚡ Zero-Overhead HTTP/3 eBPF Packet Steering Active (/api/steering/*)")
-	fmt.Println(" 📦 Edge Wasm Sandbox Memory Limiter & Crash Isolation Active (/api/sandbox/*)")
-	fmt.Println(" 🌐 Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding Active (/api/mesh/*)")
-	fmt.Println(" 💡 Standalone Single Binary with Embedded Zero-Dependency UI")
-	fmt.Println("=================================================================")
+	fmt.Printf("=================================================================\n"+
+		" ⚡ CF-Lease-Broker v%s · Multi-Account Cloudflare Resource Broker\n"+
+		" 📡 Web Dashboard Live at http://localhost:%s\n"+
+		" 🔒 Production Secrets Vault & HS256 JWT Authentication Enabled\n"+
+		" 🔄 Zero-Downtime Hot Reloading Active (Watcher & SIGHUP)\n"+
+		" 🚀 Edge Worker Virtual Compiler & Dynamic Route Injection Active\n"+
+		" 🤝 High-Availability Raft Distributed Cluster Active (/raft/*)\n"+
+		" 🛡️ Zero-Trust Mutual TLS (mTLS) & Hardware Attestation Active (/api/mtls/*)\n"+
+		" 💰 Autonomous Cost Optimization & Multi-Tenant Billing Ledger Active (/api/billing/*)\n"+
+		" 🛰️ Intelligent Edge Health Radar & Anycast Geo-Routing Active (/api/radar/*)\n"+
+		" 🔄 Autonomous Edge Token Rotator & Revocation Mesh Active (/api/rotator/*)\n"+
+		" ⚡ Zero-Overhead HTTP/3 eBPF Packet Steering Active (/api/steering/*)\n"+
+		" 📦 Edge Wasm Sandbox Memory Limiter & Crash Isolation Active (/api/sandbox/*)\n"+
+		" 🌐 Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding Active (/api/mesh/*)\n"+
+		" 🩺 Distributed eBPF Telemetry & Anomaly Self-Healing Active (/api/telemetry/*)\n"+
+		" 💡 Standalone Single Binary with Embedded Zero-Dependency UI\n"+
+		"=================================================================\n", Version, port)
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)

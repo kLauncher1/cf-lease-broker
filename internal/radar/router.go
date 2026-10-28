@@ -337,10 +337,10 @@ func (rr *RadarRouter) GetStatusSummary() RadarStatus {
 		DegradedPoPs:          degraded,
 		OfflinePoPs:           offline,
 		AverageGlobalRTTMs:    avgRTT,
-		TotalProbesDispatched: rr.probeEngine.totalProbes,
+		TotalProbesDispatched: rr.probeEngine.TotalProbes(),
 		RecentBGPAlerts:       bgpCount,
 		TotalMigrations:       migCount,
-		LastProbeRun:          rr.probeEngine.lastProbeRun,
+		LastProbeRun:          rr.probeEngine.LastProbeRun(),
 	}
 }
 

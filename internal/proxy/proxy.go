@@ -36,6 +36,8 @@ type ProxyHandler struct {
 	SteeringResolver func(r *http.Request) (mode string, latencyUs float64, target string)
 	SandboxResolver  func(r *http.Request) (status string, memoryPages int)
 	MeshAffinityResolver func(r *http.Request) (nodeID, region, shardKey string, isLocal bool)
+	TelemetryResolver func(r *http.Request) (status string, rttMs float64, retransRate float64, mitigated bool)
+	CircuitChecker    func(accountID string) bool
 	MaxRetries       int
 	MaxBodyBytes     int64
 }
@@ -128,6 +130,12 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Immediate sub-10ms bypass if circuit breaker is tripped for this account
+		if p.CircuitChecker != nil && p.CircuitChecker(account.ID) {
+			_ = p.poolManager.TriggerFailover(account.ID)
+			continue
+		}
+
 		attempts++
 
 		targetURL := p.buildTargetURL(service, account.ID, subPath, r.URL.RawQuery)
@@ -195,6 +203,16 @@ func (p *ProxyHandler) SetSandboxResolver(resolver func(r *http.Request) (status
 // SetMeshAffinityResolver attaches an optional edge mesh affinity resolver to annotate proxy telemetry headers.
 func (p *ProxyHandler) SetMeshAffinityResolver(resolver func(r *http.Request) (nodeID, region, shardKey string, isLocal bool)) {
 	p.MeshAffinityResolver = resolver
+}
+
+// SetTelemetryResolver attaches an optional eBPF telemetry resolver to annotate proxy telemetry headers.
+func (p *ProxyHandler) SetTelemetryResolver(resolver func(r *http.Request) (status string, rttMs float64, retransRate float64, mitigated bool)) {
+	p.TelemetryResolver = resolver
+}
+
+// SetCircuitChecker attaches an optional circuit breaker checker to trigger instant sub-10ms account failover if tripped.
+func (p *ProxyHandler) SetCircuitChecker(checker func(accountID string) bool) {
+	p.CircuitChecker = checker
 }
 
 var errBodyTooLarge = errors.New("request body too large")
@@ -345,6 +363,16 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 				w.Header().Set("X-CF-Broker-Mesh-Affinity", "local")
 			} else {
 				w.Header().Set("X-CF-Broker-Mesh-Affinity", "steered")
+			}
+		}
+	}
+	if p.TelemetryResolver != nil && r != nil {
+		if status, rttMs, retransRate, mitigated := p.TelemetryResolver(r); status != "" {
+			w.Header().Set("X-CF-Broker-Telemetry-Status", status)
+			w.Header().Set("X-CF-Broker-Telemetry-RTT-Ms", fmt.Sprintf("%.2f", rttMs))
+			w.Header().Set("X-CF-Broker-Telemetry-Retrans-Rate", fmt.Sprintf("%.4f", retransRate))
+			if mitigated {
+				w.Header().Set("X-CF-Broker-Telemetry-Mitigated", "true")
 			}
 		}
 	}
