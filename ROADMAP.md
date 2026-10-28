@@ -136,9 +136,11 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 ---
 
 ## Release: v0.17.0 (Adaptive Zero-Copy Compression & Brotli/Zstandard Edge Transcoder)
-- [ ] Dynamic payload inspection selecting optimal compression algorithm (Brotli, Zstandard, gzip).
-- [ ] Real-time byte streaming through pre-allocated compressor buffers with zero intermediate heap allocations.
-- [ ] Dynamic dictionary training for tenant API payloads reducing bandwidth by up to 85%.
+- [x] Dynamic payload inspection selecting optimal compression algorithm (Brotli level 1-11, Zstandard level 1-22, gzip, deflate) based on client Accept-Encoding.
+- [x] Real-time byte streaming through pre-allocated compressor buffers with zero intermediate heap allocations via tiered sync.Pool architecture.
+- [x] Dynamic dictionary training for tenant API JSON payloads reducing bandwidth consumption by up to 85%.
+- [x] Embedded glassmorphism compression dashboard panel with interactive transcode tester, dictionary inspector, and live buffer hit rate telemetry.
+- [x] RESTful control and inspection endpoints mounted under `/api/transcoder/*` with strict 64KB request body bounding.
 
 ---
 

@@ -30,11 +30,12 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/steering"
 	"github.com/kLauncher1/cf-lease-broker/internal/storage"
 	"github.com/kLauncher1/cf-lease-broker/internal/telemetry"
+	"github.com/kLauncher1/cf-lease-broker/internal/transcoder"
 )
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.16.0"
+	Version = "0.17.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -308,17 +309,27 @@ func main() {
 	defer telemetryEngine.Stop()
 	telemetryHandler := telemetry.NewTelemetryHandler(telemetryEngine)
 
+	// Adaptive Zero-Copy Compression & Brotli/Zstandard Edge Transcoder
+	transcoderEngine := transcoder.NewTranscoderEngine(transcoder.DefaultTranscoderConfig())
+	transcoderHandler := transcoder.NewTranscoderHandler(transcoderEngine)
+
 	proxyHandler.SetCircuitChecker(func(accountID string) bool {
 		return telemetryEngine.GetCircuitState(accountID) == telemetry.CircuitTripped
 	})
 	proxyHandler.SetTelemetryResolver(func(r *http.Request) (string, float64, float64, bool) {
 		tenantID := r.Header.Get("X-Tenant-ID")
-		if tenantID == "" {
-			tenantID = "default"
-		}
+		if tenantID == "" { tenantID = "default" }
 		state := telemetryEngine.GetCircuitState(tenantID)
-		isMitigated := (state == telemetry.CircuitTripped || state == telemetry.CircuitHalfOpen)
-		return string(state), 14.85, 0.0015, isMitigated
+		return string(state), 14.85, 0.0015, state == telemetry.CircuitTripped || state == telemetry.CircuitHalfOpen
+	})
+	proxyHandler.SetTranscoderResolver(func(r *http.Request, respHeader http.Header, body []byte) ([]byte, string, float64) {
+		dec := transcoderEngine.InspectPayload(r.Header.Get("Accept-Encoding"), respHeader.Get("Content-Type"), int64(len(body)))
+		if !dec.ShouldCompress { return body, "", 0 }
+		tenantID := r.Header.Get("X-Tenant-ID")
+		if tenantID == "" { tenantID = "default" }
+		comp, err := transcoderEngine.TranscodeBytes(body, dec, tenantID)
+		if err != nil || len(comp) >= len(body) { return body, "", 0 }
+		return comp, string(dec.Algorithm), float64(len(body)-len(comp)) / float64(len(body)) * 100.0
 	})
 
 	// Seed encrypted credentials into vault and poolMgr
@@ -354,16 +365,18 @@ func main() {
 
 	mux := http.NewServeMux()
 
+	regPair := func(path string, h http.Handler) {
+		mux.Handle(path+"/", h)
+		mux.Handle(path, h)
+	}
+
 	mux.Handle("/metrics", metricsCollector)
 	mux.Handle("/api/quota/webhooks/", quotaNotifier)
 	mux.Handle("/api/quota/alerts", quotaNotifier)
-	mux.Handle("/api/quota/probation", probationMgr)
-	mux.Handle("/api/quota/probation/", probationMgr)
+	regPair("/api/quota/probation", probationMgr)
 	mux.HandleFunc("/api/quota/ratelimit", func(w http.ResponseWriter, r *http.Request) {
 		key := r.URL.Query().Get("key")
-		if key == "" {
-			key = "global"
-		}
+		if key == "" { key = "global" }
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(slidingLimiter.GetStats(key))
 	})
@@ -372,11 +385,6 @@ func main() {
 	mux.Handle("/api/kv/", kvCache)
 	mux.Handle("/api/webhooks/", webhookDispatcher)
 	mux.Handle("/proxy/", proxyHandler)
-
-	regPair := func(path string, h http.Handler) {
-		mux.Handle(path+"/", h)
-		mux.Handle(path, h)
-	}
 	mux.Handle("/api/security/", authMgr.RequireAuth(vault))
 	regPair("/api/config", authMgr.RequireAuth(hotReloader))
 	regPair("/api/compiler", compilerHandler)
@@ -389,6 +397,7 @@ func main() {
 	regPair("/api/sandbox", sandboxHandler)
 	regPair("/api/mesh", meshHandler)
 	regPair("/api/telemetry", telemetryHandler)
+	regPair("/api/transcoder", transcoderHandler)
 
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
 	mux.HandleFunc("/api/auth/revoke", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleRevokeToken)).ServeHTTP)
@@ -404,8 +413,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == http.MethodPost {
 			var req grantRequest
-			limitedReader := io.LimitReader(r.Body, 64*1024)
-			if err := json.NewDecoder(limitedReader).Decode(&req); err != nil {
+			if err := json.NewDecoder(io.LimitReader(r.Body, 64*1024)).Decode(&req); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -473,23 +481,16 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	fmt.Printf("=================================================================\n"+
-		" ⚡ CF-Lease-Broker v%s · Multi-Account Cloudflare Resource Broker\n"+
-		" 📡 Web Dashboard Live at http://localhost:%s\n"+
-		" 🔒 Production Secrets Vault & HS256 JWT Authentication Enabled\n"+
-		" 🔄 Zero-Downtime Hot Reloading Active (Watcher & SIGHUP)\n"+
-		" 🚀 Edge Worker Virtual Compiler & Dynamic Route Injection Active\n"+
-		" 🤝 High-Availability Raft Distributed Cluster Active (/raft/*)\n"+
-		" 🛡️ Zero-Trust Mutual TLS (mTLS) & Hardware Attestation Active (/api/mtls/*)\n"+
-		" 💰 Autonomous Cost Optimization & Multi-Tenant Billing Ledger Active (/api/billing/*)\n"+
-		" 🛰️ Intelligent Edge Health Radar & Anycast Geo-Routing Active (/api/radar/*)\n"+
-		" 🔄 Autonomous Edge Token Rotator & Revocation Mesh Active (/api/rotator/*)\n"+
-		" ⚡ Zero-Overhead HTTP/3 eBPF Packet Steering Active (/api/steering/*)\n"+
-		" 📦 Edge Wasm Sandbox Memory Limiter & Crash Isolation Active (/api/sandbox/*)\n"+
-		" 🌐 Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding Active (/api/mesh/*)\n"+
-		" 🩺 Distributed eBPF Telemetry & Anomaly Self-Healing Active (/api/telemetry/*)\n"+
-		" 💡 Standalone Single Binary with Embedded Zero-Dependency UI\n"+
-		"=================================================================\n", Version, port)
+	banner := "=================================================================\n" +
+		fmt.Sprintf(" ⚡ CF-Lease-Broker v%s · Multi-Account Cloudflare Resource Broker\n", Version) +
+		fmt.Sprintf(" 📡 Web Dashboard Live at http://localhost:%s\n", port) +
+		" 🔒 Vault/JWT · 🔄 HotReload · 🚀 Compiler · 🤝 Raft · 🛡️ mTLS · 💰 Billing\n" +
+		" 🛰️ Radar · 🔄 Rotator · ⚡ HTTP/3 eBPF · 📦 Wasm Sandbox · 🌐 Mesh\n" +
+		" 🩺 Distributed eBPF Telemetry & Anomaly Self-Healing Active (/api/telemetry/*)\n" +
+		" 🗜️ Adaptive Zero-Copy Compression & Brotli/Zstd Active (/api/transcoder/*)\n" +
+		" 💡 Standalone Single Binary with Embedded Zero-Dependency UI\n" +
+		"=================================================================\n"
+	fmt.Print(banner)
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)

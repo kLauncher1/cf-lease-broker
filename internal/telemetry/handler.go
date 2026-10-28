@@ -180,9 +180,9 @@ func (h *TelemetryHandler) handleIngest(w http.ResponseWriter, r *http.Request) 
 
 	var metrics SocketMetrics
 	limited := io.LimitReader(r.Body, 64*1024)
-	if err := json.NewDecoder(limited).Decode(&metrics); err != nil {
+	if err := json.NewDecoder(limited).Decode(&metrics); err != nil || metrics.SocketID == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_socket_metrics_payload"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_socket_metrics_payload: missing socket_id"})
 		return
 	}
 
@@ -207,9 +207,9 @@ func (h *TelemetryHandler) handleReroute(w http.ResponseWriter, r *http.Request)
 	}
 
 	limited := io.LimitReader(r.Body, 64*1024)
-	if err := json.NewDecoder(limited).Decode(&req); err != nil || req.PrimaryEndpoint == "" || req.StandbyEndpoint == "" {
+	if err := json.NewDecoder(limited).Decode(&req); err != nil || req.PrimaryEndpoint == "" || req.StandbyEndpoint == "" || req.PrimaryEndpoint == req.StandbyEndpoint {
 		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]string{"error": "missing primary_endpoint or standby_endpoint"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid primary_endpoint or standby_endpoint"})
 		return
 	}
 

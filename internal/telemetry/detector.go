@@ -107,7 +107,22 @@ func (d *AnomalyDetector) Evaluate(m SocketMetrics, baseline EndpointSummary) []
 		})
 	}
 
-	// 4. Predictive Pre-Timeout (Detects imminent HTTP timeout before 5s-15s deadline)
+	// 4. Bufferbloat Saturation Anomaly (High in-flight bytes + elevated RTT without packet drop)
+	if m.BytesInFlight >= 32768 && baseline.AverageRTTUs > 0 && float64(m.RTTUs) >= (baseline.AverageRTTUs*2.0) && m.RetransRate < 2.0 {
+		reports = append(reports, AnomalyReport{
+			ID:              d.generateID("anom-bloat-"),
+			EndpointID:      epID,
+			SocketID:        m.SocketID,
+			Type:            AnomalyBufferbloat,
+			Severity:        SeverityWarning,
+			Score:           0.75,
+			Message:         fmt.Sprintf("Bufferbloat queue saturation: BytesInFlight=%d bytes, RTT=%d µs vs baseline %.1f µs", m.BytesInFlight, m.RTTUs, baseline.AverageRTTUs),
+			MetricsSnapshot: m,
+			DetectedAt:      now,
+		})
+	}
+
+	// 5. Predictive Pre-Timeout (Detects imminent HTTP timeout before 5s-15s deadline)
 	if m.RTTUs >= d.config.PreTimeoutThresholdUs {
 		reports = append(reports, AnomalyReport{
 			ID:              d.generateID("anom-pto-"),

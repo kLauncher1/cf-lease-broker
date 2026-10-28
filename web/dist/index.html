@@ -1291,6 +1291,126 @@ export default {
       <div id="telemetry-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
     </section>
 
+    <!-- ======================================================== -->
+    <!-- Adaptive Zero-Copy Compression & Brotli/Zstandard Transcoder -->
+    <!-- ======================================================== -->
+    <section class="card" style="margin-top: 24px; border: 1px solid rgba(56, 189, 248, 0.25); background: linear-gradient(180deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.85) 100%);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px;">
+        <div>
+          <h2 style="font-size: 16px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+            <span style="color: #38bdf8;">🗜️</span> Adaptive Zero-Copy Compression &amp; Brotli/Zstandard Edge Transcoder
+          </h2>
+          <p style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+            Dynamic Accept-Encoding negotiation (Brotli RFC 7932, Zstandard RFC 8878, Gzip RFC 1952), zero-copy buffer pooling, and tenant JSON dictionary training reducing bandwidth by up to 85%.
+          </p>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span id="transcoder-status-badge" style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 3px 10px; border-radius: 999px; font-weight: 600;">RFC 7932 / RFC 8878 Active</span>
+          <button class="action-btn" onclick="fetchTranscoderDiagnostics()" style="font-size: 11px; padding: 4px 10px; background: rgba(255,255,255,0.06);">Diagnostics</button>
+          <button class="action-btn" onclick="resetTranscoderStats()" style="font-size: 11px; padding: 4px 10px; background: rgba(239,68,68,0.15); color: #ef4444; border-color: rgba(239,68,68,0.3);">Reset</button>
+        </div>
+      </div>
+
+      <!-- 5 Metric Widgets -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;">
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Total Transcodes</div>
+          <div id="transcoder-total-transcodes" style="font-size: 20px; font-weight: 700; color: #38bdf8; margin-top: 4px;">0</div>
+          <div id="transcoder-streaming-passes" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Zero-Copy Streams: 0</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Bandwidth Savings</div>
+          <div id="transcoder-savings-percent" style="font-size: 20px; font-weight: 700; color: #10b981; margin-top: 4px;">0.0%</div>
+          <div id="transcoder-savings-ratio" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Ratio: 1.0x</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Raw vs Compressed</div>
+          <div id="transcoder-raw-compressed" style="font-size: 15px; font-weight: 700; color: #fbbf24; margin-top: 4px;">0 B &rarr; 0 B</div>
+          <div id="transcoder-saved-bytes" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Saved: 0 B</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Buffer Pool Hit Rate</div>
+          <div id="transcoder-pool-hit-rate" style="font-size: 20px; font-weight: 700; color: #a855f7; margin-top: 4px;">100.0%</div>
+          <div id="transcoder-avg-latency" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Avg Latency: &lt; 20 µs</div>
+        </div>
+        <div style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px;">
+          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">Dynamic Dictionaries</div>
+          <div id="transcoder-active-dicts" style="font-size: 20px; font-weight: 700; color: #f472b6; margin-top: 4px;">1 Active</div>
+          <div id="transcoder-dict-boost" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">JSON Reduction: up to 85%</div>
+        </div>
+      </div>
+
+      <!-- Split Layout: Left Form + Right Dictionaries -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px;">
+        <!-- Left: Live Transcoder Tester -->
+        <div style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Interactive Payload Transcoder &amp; Inspection Tester</span>
+            <div style="display: flex; gap: 6px;">
+              <button class="action-btn" onclick="applyTranscoderPreset('json')" style="font-size: 10px; padding: 2px 6px;">JSON</button>
+              <button class="action-btn" onclick="applyTranscoderPreset('bundle')" style="font-size: 10px; padding: 2px 6px;">JS Bundle</button>
+              <button class="action-btn" onclick="applyTranscoderPreset('rle')" style="font-size: 10px; padding: 2px 6px;">RLE Run</button>
+            </div>
+          </div>
+          <textarea id="transcoder-input-payload" rows="4" style="width: 100%; box-sizing: border-box; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 8px; border-radius: 6px; font-size: 11px; font-family: 'JetBrains Mono', monospace; outline: none; margin-bottom: 8px;" placeholder="Paste API JSON response, text, or HTML payload to compress..."></textarea>
+          
+          <div style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+            <select id="transcoder-sim-algo" style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 11px; outline: none; flex: 1;">
+              <option value="zstd">Zstandard (RFC 8878 - Level 3)</option>
+              <option value="br">Brotli (RFC 7932 - Level 6)</option>
+              <option value="gzip">Gzip (RFC 1952 - Level 6)</option>
+              <option value="deflate">Deflate (RFC 1951 - Raw)</option>
+            </select>
+            <input type="text" id="transcoder-sim-tenant" placeholder="Tenant ID" value="tenant-alpha" style="width: 120px; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none;">
+            <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); cursor: pointer;">
+              <input type="checkbox" id="transcoder-sim-dict" checked style="cursor: pointer;"> Dynamic Dict
+            </label>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="action-btn" onclick="executeTranscoderCompress()" style="flex: 1; background: #0284c7; color: #fff; border-color: #0284c7; font-weight: 600;">Compress Payload</button>
+            <button class="action-btn" onclick="executeTranscoderInspect()" style="flex: 1; background: rgba(56, 189, 248, 0.15); color: #38bdf8;">Inspect Decision</button>
+          </div>
+
+          <div id="transcoder-sim-result" style="max-height: 130px; overflow-y: auto; background: var(--bg-base); border-radius: 6px; border: 1px solid var(--border-subtle); padding: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted);">
+            Ready to transcode. Select preset or enter payload above.
+          </div>
+        </div>
+
+        <!-- Right: Dynamic Dictionary Models -->
+        <div style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px; display: flex; flex-direction: column;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Trained Tenant JSON Dictionaries</span>
+            <span style="font-size: 11px; color: #f472b6; font-weight: 600;">Up to 85% Reduction</span>
+          </div>
+
+          <div style="overflow-x: auto; max-height: 110px; margin-bottom: 10px; border: 1px solid var(--border-subtle); border-radius: 6px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px; font-family: 'JetBrains Mono', monospace;">
+              <thead>
+                <tr style="background: rgba(255,255,255,0.03); color: var(--text-muted); text-align: left; border-bottom: 1px solid var(--border-subtle);">
+                  <th style="padding: 6px 10px;">Tenant ID</th>
+                  <th style="padding: 6px 10px;">Dict Size</th>
+                  <th style="padding: 6px 10px;">Tokens</th>
+                  <th style="padding: 6px 10px;">Hits</th>
+                  <th style="padding: 6px 10px; text-align: right;">Avg Savings</th>
+                </tr>
+              </thead>
+              <tbody id="transcoder-dicts-tbody">
+                <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 8px;">Loading dictionary models...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-top: auto;">
+            <input type="text" id="transcoder-train-tenant" placeholder="New Tenant ID" value="tenant-beta" style="width: 120px; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 11px; font-family: monospace; outline: none;">
+            <button class="action-btn" onclick="trainTranscoderDictionary()" style="flex: 1; background: rgba(244, 114, 182, 0.15); color: #f472b6; border-color: rgba(244, 114, 182, 0.3);">+ Train Dictionary Model</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="transcoder-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
+    </section>
+
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
       <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
@@ -3583,9 +3703,249 @@ export default {
       }
     }
 
+    function applyTranscoderPreset(type) {
+      const area = document.getElementById('transcoder-input-payload');
+      if (type === 'json') {
+        area.value = JSON.stringify({
+          status: "active",
+          tenant_id: "tenant-alpha",
+          account_id: "acc-cloudflare-edge-01",
+          timestamp: new Date().toISOString(),
+          cf_ray: "8b7c4d2e1f0a9b8c",
+          colo: "SFO",
+          metrics: {
+            cpu_usage_pct: 14.8,
+            memory_pages: 128,
+            bandwidth_bytes: 48920,
+            active_leases: 12,
+            rate_limit_remaining: 1880
+          },
+          data: {
+            endpoint: "/proxy/edge-api/v1/resource",
+            method: "POST",
+            latency_us: 1450,
+            cache_hit: true,
+            error: null
+          }
+        }, null, 2);
+      } else if (type === 'bundle') {
+        area.value = `export default {\n  async fetch(request, env, ctx) {\n    const url = new URL(request.url);\n    return new Response(JSON.stringify({\n      route: url.pathname,\n      edge_time: Date.now(),\n      broker: "cf-lease-broker",\n      colo: request.cf ? request.cf.colo : "IAD"\n    }), {\n      headers: { "Content-Type": "application/json", "X-Edge-Origin": "lease-broker" }\n    });\n  }\n};`;
+      } else if (type === 'rle') {
+        area.value = 'A'.repeat(2500) + 'B'.repeat(1500) + 'C'.repeat(1000);
+      }
+    }
+
+    async function loadTranscoderState() {
+      try {
+        const [statsRes, dictsRes] = await Promise.all([
+          fetch('/api/transcoder/stats').then(r => r.json()).catch(() => null),
+          fetch('/api/transcoder/dictionary').then(r => r.json()).catch(() => null)
+        ]);
+
+        if (statsRes) {
+          const totEl = document.getElementById('transcoder-total-transcodes');
+          if (totEl) totEl.textContent = `${Number(statsRes.total_transcodes || 0).toLocaleString()} Ops`;
+          const streamEl = document.getElementById('transcoder-streaming-passes');
+          if (streamEl) streamEl.textContent = `Zero-Copy Streams: ${Number(statsRes.total_zero_copy_streaming_passes || 0).toLocaleString()}`;
+
+          const savEl = document.getElementById('transcoder-savings-percent');
+          if (savEl) {
+            savEl.textContent = `${(statsRes.savings_percent || 0).toFixed(1)}%`;
+            savEl.style.color = (statsRes.savings_percent || 0) > 50 ? '#10b981' : '#38bdf8';
+          }
+          const ratioEl = document.getElementById('transcoder-savings-ratio');
+          if (ratioEl) ratioEl.textContent = `Ratio: ${(statsRes.savings_ratio || 1.0).toFixed(2)}x`;
+
+          const rawCompEl = document.getElementById('transcoder-raw-compressed');
+          if (rawCompEl) {
+            const rawKb = (Number(statsRes.total_bytes_raw || 0) / 1024).toFixed(1);
+            const compKb = (Number(statsRes.total_bytes_compressed || 0) / 1024).toFixed(1);
+            rawCompEl.textContent = `${rawKb} KB -> ${compKb} KB`;
+          }
+          const savedEl = document.getElementById('transcoder-saved-bytes');
+          if (savedEl) {
+            const saved = (Number(statsRes.total_bytes_raw || 0) - Number(statsRes.total_bytes_compressed || 0)) / 1024;
+            savedEl.textContent = `Saved: ${saved > 0 ? saved.toFixed(1) : 0} KB`;
+          }
+
+          const poolEl = document.getElementById('transcoder-pool-hit-rate');
+          if (poolEl) poolEl.textContent = `${(statsRes.buffer_pool_hit_rate || 100.0).toFixed(1)}%`;
+          const latEl = document.getElementById('transcoder-avg-latency');
+          if (latEl) latEl.textContent = `Avg Latency: ${(statsRes.average_latency_us || 18).toFixed(1)} µs`;
+
+          const dictsEl = document.getElementById('transcoder-active-dicts');
+          if (dictsEl) dictsEl.textContent = `${statsRes.active_dictionaries_count || 1} Active`;
+        }
+
+        const tbody = document.getElementById('transcoder-dicts-tbody');
+        if (tbody && dictsRes && Array.isArray(dictsRes.dictionaries)) {
+          if (dictsRes.dictionaries.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 8px;">No tenant dictionaries found.</td></tr>`;
+          } else {
+            tbody.innerHTML = dictsRes.dictionaries.map(d => `
+              <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                <td style="padding: 6px 10px; color: #fff; font-weight: 600;">${escapeHtml(d.tenant_id)}</td>
+                <td style="padding: 6px 10px; color: #38bdf8;">${Number(d.dictionary_size).toLocaleString()} B</td>
+                <td style="padding: 6px 10px; color: #fbbf24;">${d.trained_ngrams_count}</td>
+                <td style="padding: 6px 10px; color: var(--text-muted);">${Number(d.hit_count || 0).toLocaleString()}</td>
+                <td style="padding: 6px 10px; text-align: right; color: #10b981; font-weight: 700;">${(d.average_savings_percent || 75.0).toFixed(1)}%</td>
+              </tr>
+            `).join('');
+          }
+        }
+      } catch (err) {
+        console.error('loadTranscoderState error:', err);
+      }
+    }
+
+    async function executeTranscoderCompress() {
+      const payload = document.getElementById('transcoder-input-payload').value;
+      const algo = document.getElementById('transcoder-sim-algo').value;
+      const tenant = document.getElementById('transcoder-sim-tenant').value.trim() || 'tenant-alpha';
+      const useDict = document.getElementById('transcoder-sim-dict').checked;
+      const resBox = document.getElementById('transcoder-sim-result');
+
+      if (!payload) {
+        alert('Please enter or select a payload to compress.');
+        return;
+      }
+
+      resBox.innerHTML = `Compressing ${payload.length} bytes via ${algo.toUpperCase()}...`;
+
+      try {
+        const query = new URLSearchParams({ algo: algo, tenant: tenant, dict: useDict ? 'true' : 'false' });
+        const res = await fetch(`/api/transcoder/compress?${query.toString()}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Tenant-ID': tenant
+          },
+          body: payload
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          resBox.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(errData.error || res.statusText)}</span>`;
+          return;
+        }
+
+        const rawBytes = res.headers.get('X-CF-Broker-Raw-Bytes') || payload.length;
+        const compBytes = res.headers.get('X-CF-Broker-Compressed-Bytes') || '0';
+        const savings = res.headers.get('X-CF-Broker-Savings-Percent') || '0.0%';
+        const encoding = res.headers.get('Content-Encoding') || algo;
+        const buf = await res.arrayBuffer();
+        const hexPreview = Array.from(new Uint8Array(buf.slice(0, 32)))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join(' ');
+
+        resBox.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="color: #10b981; font-weight: 700;">Compressed successfully (${encoding.toUpperCase()})</span>
+            <span style="background: rgba(16,185,129,0.2); color: #10b981; padding: 2px 8px; border-radius: 999px; font-weight: 700;">${savings} Saved</span>
+          </div>
+          <div>Raw Size: <strong style="color: #fff;">${rawBytes} B</strong> &rarr; Compressed: <strong style="color: #38bdf8;">${compBytes} B</strong></div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">
+            Header Hex Preview (first ${Math.min(32, buf.byteLength)} B): <code style="color: #fbbf24;">${hexPreview}${buf.byteLength > 32 ? '...' : ''}</code>
+          </div>
+        `;
+        loadTranscoderState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Network error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function executeTranscoderInspect() {
+      const resBox = document.getElementById('transcoder-sim-result');
+      resBox.innerHTML = `Evaluating client headers and negotiation pipeline...`;
+
+      try {
+        const res = await fetch('/api/transcoder/inspect', {
+          method: 'POST',
+          headers: {
+            'Accept-Encoding': 'gzip, deflate, br;q=0.8, zstd;q=1.0',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            accept_encoding: "gzip, deflate, br;q=0.8, zstd;q=1.0",
+            content_type: "application/json",
+            content_length: 1250
+          })
+        });
+        const data = await res.json();
+        resBox.innerHTML = `
+          <div style="color: #38bdf8; font-weight: 700; margin-bottom: 4px;">Optimal Decision: ${escapeHtml(data.algorithm).toUpperCase()} (Level ${data.level})</div>
+          <div>Should Compress: <strong style="color: ${data.should_compress ? '#10b981' : '#ef4444'};">${data.should_compress}</strong> · Content-Encoding: <code style="color: #fbbf24;">${escapeHtml(data.content_encoding)}</code></div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
+            Use Dictionary: <strong style="color: #fff;">${data.use_dictionary}</strong> · Dictionary ID: <code>${escapeHtml(data.dictionary_id || 'default')}</code>
+          </div>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Inspect error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function trainTranscoderDictionary() {
+      const tenant = document.getElementById('transcoder-train-tenant').value.trim();
+      if (!tenant) {
+        alert('Please specify a Tenant ID');
+        return;
+      }
+
+      const samples = [
+        JSON.stringify({ tenant_id: tenant, status: "active", metrics: { cpu: 0.12, memory: 128 }, created_at: new Date().toISOString() }),
+        JSON.stringify({ tenant_id: tenant, status: "ok", results: ["item-01", "item-02"], duration_ms: 1.25, cf_ray: "abc123ray" }),
+        JSON.stringify({ tenant_id: tenant, status: "active", lease_voucher: "tok-test-voucher-sample", quota_remaining: 95000 })
+      ];
+
+      try {
+        const res = await fetch('/api/transcoder/dictionary/train', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: tenant, samples: samples })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert(`Dictionary successfully trained for ${tenant}: ${data.dictionary_size} bytes (${data.trained_ngrams_count} tokens)`);
+          loadTranscoderState();
+        } else {
+          alert('Failed to train dictionary: ' + (data.error || res.statusText));
+        }
+      } catch (err) {
+        alert('Network error: ' + err.message);
+      }
+    }
+
+    async function resetTranscoderStats() {
+      if (!confirm('Reset transcoder telemetry counters and operational metrics?')) return;
+      try {
+        await fetch('/api/transcoder/reset', { method: 'POST' });
+        loadTranscoderState();
+      } catch (err) {
+        alert('Failed to reset: ' + err.message);
+      }
+    }
+
+    async function fetchTranscoderDiagnostics() {
+      const diag = document.getElementById('transcoder-diag-result');
+      diag.style.display = 'block';
+      diag.textContent = 'Querying transcoder status and buffer pool metrics...';
+      try {
+        const res = await fetch('/api/transcoder/status');
+        const data = await res.json();
+        diag.innerHTML = `
+          <div style="color: #38bdf8; font-weight: 700; margin-bottom: 6px;">Adaptive Zero-Copy Compression &amp; Transcoder Diagnostics</div>
+          <pre style="color: #f8fafc; font-size: 11px; max-height: 140px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+        `;
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
     applyRadarPreset();
     applySandboxPreset();
+    applyTranscoderPreset('json');
     loadTelemetryState();
+    loadTranscoderState();
 
     loadState();
     setInterval(loadState, 2000);

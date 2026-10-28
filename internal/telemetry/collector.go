@@ -192,9 +192,18 @@ func (c *TelemetryCollector) PruneStaleSockets(maxAge time.Duration) int {
 				delete(sockSet, sockID)
 				if len(sockSet) == 0 {
 					delete(c.endpointSocks, s.EndpointID)
+					delete(c.endpointMap, s.EndpointID)
 				}
 			}
 			pruned++
+		}
+	}
+
+	for epID, st := range c.endpointMap {
+		if socks, ok := c.endpointSocks[epID]; !ok || len(socks) == 0 {
+			if now.Sub(st.lastUpdate) > maxAge {
+				delete(c.endpointMap, epID)
+			}
 		}
 	}
 	return pruned

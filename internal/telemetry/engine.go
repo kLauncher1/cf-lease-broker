@@ -103,7 +103,6 @@ func (e *TelemetryEngine) Stop() {
 
 // IngestProbe pushes a socket metrics event into the pipeline immediately.
 func (e *TelemetryEngine) IngestProbe(metrics SocketMetrics) {
-	atomic.AddInt64(&e.probesCount, 1)
 	e.ringBuffer.Push(metrics)
 }
 

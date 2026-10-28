@@ -33,6 +33,14 @@ func (rb *RingBuffer) Push(metrics SocketMetrics) {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
 
+	if rb.capacity <= 0 || len(rb.buffer) == 0 {
+		rb.capacity = 1024
+		rb.buffer = make([]SocketMetrics, rb.capacity)
+		rb.head = 0
+		rb.tail = 0
+		rb.count = 0
+	}
+
 	rb.buffer[rb.tail] = metrics
 	rb.tail = (rb.tail + 1) % rb.capacity
 
@@ -109,6 +117,9 @@ func (rb *RingBuffer) DroppedCount() uint64 {
 func (rb *RingBuffer) Reset() {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
+	for i := range rb.buffer {
+		rb.buffer[i] = SocketMetrics{}
+	}
 	rb.head = 0
 	rb.tail = 0
 	rb.count = 0
