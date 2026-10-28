@@ -574,3 +574,51 @@ func TestProxyCircuitCheckerFailover(t *testing.T) {
 		t.Fatalf("expected request to failover away from tripped account %s, but got %s", trippedAccount, usedAccount)
 	}
 }
+
+func TestProxyTranscoderResolverIntegration(t *testing.T) {
+	rawPayload := []byte(`{"service":"worker-api","status":"ok","result":"adaptive compression payload"}`)
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(rawPayload)
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	handler.SetTranscoderResolver(func(r *http.Request, respHeader http.Header, body []byte) ([]byte, string, float64) {
+		ae := r.Header.Get("Accept-Encoding")
+		if strings.Contains(ae, "zstd") {
+			// Mock compressed payload returning compressed marker
+			return []byte("zstd_compressed_data"), "zstd", 65.5
+		}
+		return body, "", 0
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/endpoint", nil)
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br;q=0.8, zstd;q=1.0")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if rec.Header().Get("Content-Encoding") != "zstd" {
+		t.Fatalf("expected Content-Encoding zstd, got %s", rec.Header().Get("Content-Encoding"))
+	}
+	if rec.Header().Get("X-CF-Broker-Compression") != "zstd" {
+		t.Fatalf("expected X-CF-Broker-Compression zstd, got %s", rec.Header().Get("X-CF-Broker-Compression"))
+	}
+	if rec.Header().Get("X-CF-Broker-Savings-Percent") != "65.50%" {
+		t.Fatalf("expected X-CF-Broker-Savings-Percent 65.50%%, got %s", rec.Header().Get("X-CF-Broker-Savings-Percent"))
+	}
+	if rec.Body.String() != "zstd_compressed_data" {
+		t.Fatalf("expected compressed body, got %s", rec.Body.String())
+	}
+}

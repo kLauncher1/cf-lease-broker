@@ -16,6 +16,8 @@ type CircuitBreaker struct {
 	TrippedAt     time.Time
 	LastTestedAt  time.Time
 	CanarySuccess int
+	FlapCount     int
+	LastHealedAt  time.Time
 }
 
 // MitigationEngine manages sub-10ms circuit breaking, autonomous traffic rerouting, and self-healing.
@@ -52,6 +54,18 @@ func (m *MitigationEngine) SetStandbyRoute(primaryEndpoint, standbyEndpoint stri
 	m.rerouteRules[primaryEndpoint] = standbyEndpoint
 }
 
+func (m *MitigationEngine) effectiveCooldown(cb *CircuitBreaker) time.Duration {
+	cooldown := m.config.CircuitCooldownDuration
+	if cb.FlapCount > 0 {
+		shift := cb.FlapCount
+		if shift > 5 {
+			shift = 5
+		}
+		cooldown = m.config.CircuitCooldownDuration * time.Duration(1<<shift)
+	}
+	return cooldown
+}
+
 // GetCircuitState returns the current circuit state for an endpoint.
 func (m *MitigationEngine) GetCircuitState(endpointID string) CircuitState {
 	m.mu.Lock()
@@ -63,7 +77,7 @@ func (m *MitigationEngine) GetCircuitState(endpointID string) CircuitState {
 	}
 
 	// Check if cooldown expired to automatically promote Open to HalfOpen
-	if cb.State == CircuitOpen && time.Since(cb.TrippedAt) >= m.config.CircuitCooldownDuration {
+	if cb.State == CircuitOpen && time.Since(cb.TrippedAt) >= m.effectiveCooldown(cb) {
 		cb.State = CircuitHalfOpen
 		cb.LastTestedAt = time.Now()
 	}
@@ -135,17 +149,26 @@ func (m *MitigationEngine) HandleAnomaly(anomaly AnomalyReport) (*MitigationActi
 	}
 
 	prevState := cb.State
+	if !cb.LastHealedAt.IsZero() && time.Since(cb.LastHealedAt) < 10*time.Second {
+		cb.FlapCount++
+	} else if prevState == CircuitClosed {
+		cb.FlapCount = 0
+	}
 	cb.State = CircuitOpen
 	cb.TrippedAt = startTime
+	cb.CanarySuccess = 0
 	cb.RerouteTarget = standby
 	m.activeReroutes[epID] = standby
 
 	// Compute latency from anomaly detection to mitigation execution in microseconds
-	latencyUs := time.Since(anomaly.DetectedAt).Microseconds()
-	if latencyUs <= 0 {
+	latencyUs := int64(1)
+	if !anomaly.DetectedAt.IsZero() {
+		latencyUs = time.Since(anomaly.DetectedAt).Microseconds()
+	}
+	if latencyUs <= 0 || latencyUs > 10000000 {
 		latencyUs = time.Since(startTime).Microseconds()
 	}
-	if latencyUs == 0 {
+	if latencyUs <= 0 {
 		latencyUs = 1 // At least 1 µs
 	}
 
@@ -177,7 +200,7 @@ func (m *MitigationEngine) HandleHealthySample(endpointID string) (*MitigationAc
 	}
 
 	// Automatic transition from Open to HalfOpen if cooldown passed
-	if cb.State == CircuitOpen && time.Since(cb.TrippedAt) >= m.config.CircuitCooldownDuration {
+	if cb.State == CircuitOpen && time.Since(cb.TrippedAt) >= m.effectiveCooldown(cb) {
 		cb.State = CircuitHalfOpen
 	}
 
@@ -190,6 +213,7 @@ func (m *MitigationEngine) HandleHealthySample(endpointID string) (*MitigationAc
 		prevState := cb.State
 		cb.State = CircuitClosed
 		cb.CanarySuccess = 0
+		cb.LastHealedAt = startTime
 		cb.RerouteTarget = ""
 		delete(m.activeReroutes, endpointID)
 

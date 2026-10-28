@@ -38,6 +38,7 @@ type ProxyHandler struct {
 	MeshAffinityResolver func(r *http.Request) (nodeID, region, shardKey string, isLocal bool)
 	TelemetryResolver func(r *http.Request) (status string, rttMs float64, retransRate float64, mitigated bool)
 	CircuitChecker    func(accountID string) bool
+	TranscoderResolver func(r *http.Request, respHeader http.Header, body []byte) (compressed []byte, encoding string, savings float64)
 	MaxRetries       int
 	MaxBodyBytes     int64
 }
@@ -377,8 +378,32 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 		}
 	}
 
+	if p.TranscoderResolver != nil && r != nil {
+		rawBody, err := io.ReadAll(resp.Body)
+		if err == nil {
+			comp, encoding, savings := p.TranscoderResolver(r, resp.Header, rawBody)
+			if encoding != "" && len(comp) > 0 {
+				w.Header().Set("Content-Encoding", encoding)
+				w.Header().Set("X-CF-Broker-Compression", encoding)
+				w.Header().Set("X-CF-Broker-Savings-Percent", fmt.Sprintf("%.2f%%", savings))
+				w.Header().Del("Content-Length")
+				w.WriteHeader(resp.StatusCode)
+				_, _ = w.Write(comp)
+				return
+			}
+			w.WriteHeader(resp.StatusCode)
+			_, _ = w.Write(rawBody)
+			return
+		}
+	}
+
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
+}
+
+// SetTranscoderResolver registers an adaptive compression transcoder for proxy responses.
+func (p *ProxyHandler) SetTranscoderResolver(fn func(r *http.Request, respHeader http.Header, body []byte) ([]byte, string, float64)) {
+	p.TranscoderResolver = fn
 }
 
 func (p *ProxyHandler) writePoolExhaustedError(w http.ResponseWriter, attempts int, message string) {

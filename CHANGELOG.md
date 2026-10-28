@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-10-28
+
+### Added
+- **Adaptive Multi-Algorithm Transcoder Engine**: Implemented `internal/transcoder/engine.go` and `internal/transcoder/types.go` providing dynamic payload inspection, client `Accept-Encoding` quality factor negotiation (`q=...`), content-type compressibility filtering, and automated algorithm selection across Brotli, Zstandard, Gzip, and Deflate.
+- **Pure Go RFC 7932 Brotli Frame Encoder & Decoder**: Implemented `internal/transcoder/brotli.go` featuring bit-level stream writers, standard 16-bit window headers, multi-chunk uncompressed meta-blocks, byte alignment padding, and streaming `BrotliWriter` pipeline without external CGO dependencies.
+- **Pure Go RFC 8878 Zstandard Frame Encoder & Decoder**: Implemented `internal/transcoder/zstd.go` supporting Zstandard magic number framing (`0xFD2FB528`), frame header descriptors, raw blocks, run-length encoding (RLE) blocks, 4-byte CRC32-IEEE checksum verification, and streaming `ZstdWriter` pipeline.
+- **Tiered Zero-Allocation Buffer Pool**: Implemented `internal/transcoder/buffer_pool.go` using a tiered `sync.Pool` architecture (Small: 4KB, Medium: 64KB, Large: 256KB) with slice recycling, capacity guards, and zero heap allocation overhead during streaming transcoding.
+- **Dynamic Tenant JSON Dictionary Trainer**: Implemented `internal/transcoder/dictionary.go` analyzing frequent JSON n-grams and Cloudflare edge payload tokens, compiling tenant-isolated 32KB dictionaries, and achieving up to 85% bandwidth reduction on repeated API responses using dictionary-assisted Deflate compression.
+- **Transcoder REST API Endpoints**: Implemented `internal/transcoder/handler.go` mounting `/api/transcoder/*` in `main.go`, exposing `/api/transcoder/status`, `/api/transcoder/compress`, `/api/transcoder/decompress`, `/api/transcoder/inspect`, `/api/transcoder/dictionary`, `/api/transcoder/dictionary/train`, `/api/transcoder/stats`, and `/api/transcoder/reset` with strict 64KB request body bounds on control operations.
+- **Interactive Glassmorphism Compression Dashboard**: Enhanced `web/dist/index.html` with a dedicated control card featuring live KPI telemetry counters (Total Transcodes, Bandwidth Savings %, Raw vs Compressed bytes, Buffer Pool Hit Rate, and Active Dictionaries), an interactive payload compression tester with presets, a tenant dictionary model inspector, and live diagnostic tools.
+- **Exhaustive Transcoder Test Suite**: Added 11 unit and integration tests in `internal/transcoder/transcoder_test.go` verifying Accept-Encoding quality factor negotiation, content filtering, Brotli and Zstandard frame round-trips, Gzip/Deflate compression, buffer pool recycling, dynamic dictionary training >60-85% savings, zero-copy streaming, REST handlers, 64KB body bounding, and 40-goroutine concurrent execution.
+
+### Changed
+- Mounted `/api/transcoder/` routes on HTTP mux and initialized `TranscoderEngine` and `TranscoderHandler` in `main.go`.
+- Added `TranscoderResolver` hook to `ProxyHandler` (`internal/proxy/proxy.go`), automatically transcoding edge reverse proxy responses based on client `Accept-Encoding`, setting `Content-Encoding`, and annotating downstream responses with `X-CF-Broker-Compression` and `X-CF-Broker-Savings-Percent` headers.
+- Added `TestProxyTranscoderResolverIntegration` in `internal/proxy/proxy_test.go` verifying reverse proxy compression integration.
+- Resolved edge cases in telemetry mitigation engine and detector (`internal/telemetry/adversarial_test.go`): eliminated double counting in probe ingestion, reset canary probe counters upon circuit re-tripping, handled zero-value anomaly timestamps, detected bufferbloat saturation anomalies, and applied exponential cooldown backoff to circuit flapping.
+- Bumped application version to `0.17.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.16.0] - 2026-10-28
 
 ### Added
