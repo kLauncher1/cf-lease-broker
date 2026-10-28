@@ -499,3 +499,78 @@ func TestProxyMeshAffinityResolverIntegration(t *testing.T) {
 		t.Fatalf("expected X-CF-Broker-Mesh-Affinity header local, got %s", rec.Header().Get("X-CF-Broker-Mesh-Affinity"))
 	}
 }
+
+func TestProxyTelemetryResolverIntegration(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"telemetry-monitored"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	handler.SetTelemetryResolver(func(r *http.Request) (string, float64, float64, bool) {
+		return "healthy", 14.50, 0.0012, true
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/endpoint", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-CF-Broker-Telemetry-Status") != "healthy" {
+		t.Fatalf("expected X-CF-Broker-Telemetry-Status header healthy, got %s", rec.Header().Get("X-CF-Broker-Telemetry-Status"))
+	}
+	if rec.Header().Get("X-CF-Broker-Telemetry-RTT-Ms") != "14.50" {
+		t.Fatalf("expected X-CF-Broker-Telemetry-RTT-Ms header 14.50, got %s", rec.Header().Get("X-CF-Broker-Telemetry-RTT-Ms"))
+	}
+	if rec.Header().Get("X-CF-Broker-Telemetry-Retrans-Rate") != "0.0012" {
+		t.Fatalf("expected X-CF-Broker-Telemetry-Retrans-Rate header 0.0012, got %s", rec.Header().Get("X-CF-Broker-Telemetry-Retrans-Rate"))
+	}
+	if rec.Header().Get("X-CF-Broker-Telemetry-Mitigated") != "true" {
+		t.Fatalf("expected X-CF-Broker-Telemetry-Mitigated header true, got %s", rec.Header().Get("X-CF-Broker-Telemetry-Mitigated"))
+	}
+}
+
+func TestProxyCircuitCheckerFailover(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"failover-success"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	// Trip circuit for the first selected account
+	trippedAccount := "cf-acc-01"
+	handler.SetCircuitChecker(func(accountID string) bool {
+		return accountID == trippedAccount
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/endpoint", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK after circuit failover, got %d", rec.Code)
+	}
+	// Verify that the used account was not the tripped account
+	usedAccount := rec.Header().Get("X-CF-Broker-Account")
+	if usedAccount == trippedAccount {
+		t.Fatalf("expected request to failover away from tripped account %s, but got %s", trippedAccount, usedAccount)
+	}
+}

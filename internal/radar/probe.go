@@ -255,6 +255,18 @@ func (pe *ProbeEngine) GetAllStats() map[string]ProbeStats {
 	return snapshot
 }
 
+// TotalProbes returns the atomic count of all dispatched probes.
+func (pe *ProbeEngine) TotalProbes() int64 {
+	return atomic.LoadInt64(&pe.totalProbes)
+}
+
+// LastProbeRun returns the timestamp of the last probe run in a thread-safe manner.
+func (pe *ProbeEngine) LastProbeRun() time.Time {
+	pe.mu.RLock()
+	defer pe.mu.RUnlock()
+	return pe.lastProbeRun
+}
+
 // Start begins the background periodic synthetic probing ticker.
 func (pe *ProbeEngine) Start(interval time.Duration) {
 	pe.mu.Lock()

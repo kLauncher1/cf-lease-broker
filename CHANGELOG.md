@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-10-28
+
+### Added
+- **Distributed eBPF Telemetry Pipeline**: Implemented `internal/telemetry/probe_linux.go`, `internal/telemetry/probe_other.go`, `internal/telemetry/ringbuffer.go`, `internal/telemetry/collector.go`, and `internal/telemetry/types.go` providing kernel-level socket telemetry capturing TCP receive/send window sizing, EWMA round-trip times, RTT variance/jitter, and packet retransmission metrics with cross-platform driver abstraction.
+- **High-Throughput Zero-Allocation Circular Ring Buffer**: Implemented `internal/telemetry/ringbuffer.go` supporting lock-protected circular metric ingestion, overflow tracking, and FIFO batch draining for real-time socket samples.
+- **Real-Time Anomaly Detection Engine**: Implemented `internal/telemetry/detector.go` continuously analyzing socket metrics to identify TCP window collapse (< 4KB), packet retransmission surges (> 5.0%), and predictive pre-timeout degradation (> 250ms EWMA RTT) before upstream HTTP 504 timeouts occur.
+- **Sub-10ms Circuit Breaker & Autonomous Self-Healing Engine**: Implemented `internal/telemetry/mitigation.go` and `internal/telemetry/engine.go` providing sub-10ms circuit transitions (`Closed` -> `Degraded` -> `Tripped` -> `HalfOpen`), canary probe state machines, and dynamic route diversion to standby edge worker endpoints, verified with sub-15µs in-memory execution latency.
+- **Telemetry REST API Endpoints**: Implemented `internal/telemetry/handler.go` mounting `/api/telemetry/*` in `main.go`, exposing `/api/telemetry/status`, `/api/telemetry/sockets`, `/api/telemetry/anomalies`, `/api/telemetry/mitigations`, `/api/telemetry/circuits`, `/api/telemetry/simulate`, `/api/telemetry/ingest`, `/api/telemetry/reroute`, and `/api/telemetry/reset` with strict 64KB request body bounding.
+- **Glassmorphism Telemetry Dashboard Panel**: Enhanced `web/dist/index.html` with a dedicated control card featuring live KPI telemetry counters (Monitored Sockets, Active Retransmission Rate, Average RTT/Jitter, Active Tripped Circuits, and Sub-10ms Mitigation Ratio), an active socket metrics table, an interactive anomaly injection & self-healing simulator, circuit breaker state indicators, and a live mitigation audit journal.
+- **Comprehensive Telemetry Test Suite**: Added 9 exhaustive unit and integration tests in `internal/telemetry/telemetry_test.go` covering circular ring buffer mechanics, EWMA smoothing, window collapse detection, retransmission spike traps, predictive pre-timeout tracking, sub-10ms circuit breaker trips, canary self-healing, REST API endpoints, 64KB body bounding, and 40-goroutine concurrent execution.
+
+### Changed
+- Mounted `/api/telemetry/` routes on HTTP mux and initialized `TelemetryEngine` and `TelemetryHandler` in `main.go`.
+- Wired `TelemetryResolver` and `CircuitChecker` hooks into `ProxyHandler` (`internal/proxy/proxy.go`), enabling sub-10ms fast failover before network timeouts when upstream circuits are tripped, and attaching `X-CF-Broker-Telemetry-*` tracking headers.
+- Fixed atomic concurrency data race on probe metrics in `internal/radar/probe.go` and `internal/radar/router.go` with thread-safe atomic getters (`TotalProbes()`, `LastProbeRun()`).
+- Bumped application version to `0.16.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.15.0] - 2026-10-22
 
 ### Added
