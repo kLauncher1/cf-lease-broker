@@ -24,6 +24,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/quota"
 	"github.com/kLauncher1/cf-lease-broker/internal/radar"
 	"github.com/kLauncher1/cf-lease-broker/internal/raft"
+	"github.com/kLauncher1/cf-lease-broker/internal/replication"
 	"github.com/kLauncher1/cf-lease-broker/internal/rotator"
 	"github.com/kLauncher1/cf-lease-broker/internal/sandbox"
 	"github.com/kLauncher1/cf-lease-broker/internal/security"
@@ -35,7 +36,7 @@ import (
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.17.0"
+	Version = "0.18.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -283,16 +284,10 @@ func main() {
 
 	proxyHandler.SetMeshAffinityResolver(func(r *http.Request) (string, string, string, bool) {
 		clientRegion := r.Header.Get("CF-IPCountry")
-		if clientRegion == "" {
-			clientRegion = r.Header.Get("X-Region")
-		}
-		if clientRegion == "" {
-			clientRegion = "iad"
-		}
+		if clientRegion == "" { clientRegion = r.Header.Get("X-Region") }
+		if clientRegion == "" { clientRegion = "iad" }
 		shardKey := r.Header.Get("X-Tenant-ID")
-		if shardKey == "" {
-			shardKey = r.URL.Path
-		}
+		if shardKey == "" { shardKey = r.URL.Path }
 		if dec, err := meshEngine.ResolveAffinity(clientRegion, shardKey); err == nil && dec != nil {
 			return dec.SelectedNode.ID, dec.SelectedNode.Region, shardKey, dec.IsLocalServe
 		}
@@ -332,6 +327,20 @@ func main() {
 		return comp, string(dec.Algorithm), float64(len(body)-len(comp)) / float64(len(body)) * 100.0
 	})
 
+	// Key-Value Geo-Replication Mesh & Eventual Consistency Engine
+	replEngine := replication.NewGeoReplicationEngine(replication.ReplicationConfig{LocalNodeID: "node-edge-local", Region: "ord"})
+	replEngine.Start()
+	defer replEngine.Stop()
+	replHandler := replication.NewReplicationHandler(replEngine)
+	proxyHandler.SetReplicationResolver(func(r *http.Request) (string, string) {
+		ctx := replication.ExtractSessionContext(r)
+		stats := replEngine.Stats()
+		if ctx != nil && ctx.RequestedConsistency != "" {
+			return string(ctx.RequestedConsistency), stats.CurrentClock.String()
+		}
+		return "eventual", stats.CurrentClock.String()
+	})
+
 	// Seed encrypted credentials into vault and poolMgr
 	for _, acc := range activeConfig.Accounts {
 		poolMgr.UpsertAccount(acc.ToAccountStatus())
@@ -347,13 +356,9 @@ func main() {
 		for _, acc := range newCfg.Accounts {
 			telemetryEngine.RegisterTarget(acc.ID, "127.0.0.1:443", "tcp")
 			statuses = append(statuses, acc.ToAccountStatus())
-			if acc.APIToken != "" {
-				_ = vault.StoreCredential(acc.ID, []byte(acc.APIToken))
-			}
+			if acc.APIToken != "" { _ = vault.StoreCredential(acc.ID, []byte(acc.APIToken)) }
 			tier := billing.TierPaidStandard
-			if strings.Contains(strings.ToLower(acc.Plan), "free") {
-				tier = billing.TierFree
-			}
+			if strings.Contains(strings.ToLower(acc.Plan), "free") { tier = billing.TierFree }
 			billingMeter.RegisterAccount(acc.ID, tier, 10000000)
 		}
 		poolMgr.SyncAccounts(statuses)
@@ -398,12 +403,12 @@ func main() {
 	regPair("/api/mesh", meshHandler)
 	regPair("/api/telemetry", telemetryHandler)
 	regPair("/api/transcoder", transcoderHandler)
+	regPair("/api/replication", replHandler)
 
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
 	mux.HandleFunc("/api/auth/revoke", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleRevokeToken)).ServeHTTP)
 	mux.HandleFunc("/api/auth/me", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleMe)).ServeHTTP)
 	mux.HandleFunc("/api/auth/status", authMgr.HandleStatus)
-
 	mux.HandleFunc("/api/accounts", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(poolMgr.ListAccounts())
@@ -443,10 +448,7 @@ func main() {
 
 	revokeHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
-		if id == "" {
-			http.Error(w, "missing id query parameter", http.StatusBadRequest)
-			return
-		}
+		if id == "" { http.Error(w, "missing id query parameter", http.StatusBadRequest); return }
 		if err := tokenRotator.RevokeToken(id, "operator_api_revocation"); err != nil {
 			if err := leaseEng.RevokeLease(id); err != nil {
 				http.Error(w, err.Error(), http.StatusNotFound)
@@ -469,9 +471,7 @@ func main() {
 	})
 
 	subFS, err := fs.Sub(embeddedWeb, "web/dist")
-	if err != nil {
-		log.Fatalf("Failed to initialize embedded web filesystem: %v", err)
-	}
+	if err != nil { log.Fatalf("Failed to initialize embedded web filesystem: %v", err) }
 	mux.Handle("/", http.FileServer(http.FS(subFS)))
 
 	server := &http.Server{
@@ -485,9 +485,8 @@ func main() {
 		fmt.Sprintf(" ⚡ CF-Lease-Broker v%s · Multi-Account Cloudflare Resource Broker\n", Version) +
 		fmt.Sprintf(" 📡 Web Dashboard Live at http://localhost:%s\n", port) +
 		" 🔒 Vault/JWT · 🔄 HotReload · 🚀 Compiler · 🤝 Raft · 🛡️ mTLS · 💰 Billing\n" +
-		" 🛰️ Radar · 🔄 Rotator · ⚡ HTTP/3 eBPF · 📦 Wasm Sandbox · 🌐 Mesh\n" +
-		" 🩺 Distributed eBPF Telemetry & Anomaly Self-Healing Active (/api/telemetry/*)\n" +
-		" 🗜️ Adaptive Zero-Copy Compression & Brotli/Zstd Active (/api/transcoder/*)\n" +
+		" 🛰️ Radar · 🔄 Rotator · ⚡ HTTP/3 eBPF · 📦 Wasm Sandbox · 🌐 Mesh · 🩺 Telemetry\n" +
+		" 🗜️ Adaptive Compression · 🌐 Key-Value Geo-Replication Active (/api/replication/*)\n" +
 		" 💡 Standalone Single Binary with Embedded Zero-Dependency UI\n" +
 		"=================================================================\n"
 	fmt.Print(banner)

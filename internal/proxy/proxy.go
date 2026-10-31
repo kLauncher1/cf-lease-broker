@@ -39,6 +39,7 @@ type ProxyHandler struct {
 	TelemetryResolver func(r *http.Request) (status string, rttMs float64, retransRate float64, mitigated bool)
 	CircuitChecker    func(accountID string) bool
 	TranscoderResolver func(r *http.Request, respHeader http.Header, body []byte) (compressed []byte, encoding string, savings float64)
+	ReplicationResolver func(r *http.Request) (status string, clock string)
 	MaxRetries       int
 	MaxBodyBytes     int64
 }
@@ -378,6 +379,16 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 		}
 	}
 
+	if p.ReplicationResolver != nil && r != nil {
+		status, clock := p.ReplicationResolver(r)
+		if status != "" {
+			w.Header().Set("X-CF-Broker-Consistency", status)
+		}
+		if clock != "" {
+			w.Header().Set("X-CF-Broker-VectorClock", clock)
+		}
+	}
+
 	if p.TranscoderResolver != nil && r != nil {
 		rawBody, err := io.ReadAll(resp.Body)
 		if err == nil {
@@ -404,6 +415,11 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 // SetTranscoderResolver registers an adaptive compression transcoder for proxy responses.
 func (p *ProxyHandler) SetTranscoderResolver(fn func(r *http.Request, respHeader http.Header, body []byte) ([]byte, string, float64)) {
 	p.TranscoderResolver = fn
+}
+
+// SetReplicationResolver registers a geo-replication consistency resolver for proxy responses.
+func (p *ProxyHandler) SetReplicationResolver(fn func(r *http.Request) (string, string)) {
+	p.ReplicationResolver = fn
 }
 
 func (p *ProxyHandler) writePoolExhaustedError(w http.ResponseWriter, attempts int, message string) {

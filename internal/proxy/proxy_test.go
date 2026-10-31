@@ -622,3 +622,38 @@ func TestProxyTranscoderResolverIntegration(t *testing.T) {
 		t.Fatalf("expected compressed body, got %s", rec.Body.String())
 	}
 }
+
+func TestProxyReplicationResolverIntegration(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	handler.SetReplicationResolver(func(r *http.Request) (string, string) {
+		return "read_your_writes", `{"node-ord":5}`
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/kv-service/keys/my-item", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-CF-Broker-Consistency") != "read_your_writes" {
+		t.Fatalf("expected X-CF-Broker-Consistency 'read_your_writes', got '%s'", rec.Header().Get("X-CF-Broker-Consistency"))
+	}
+	if rec.Header().Get("X-CF-Broker-VectorClock") != `{"node-ord":5}` {
+		t.Fatalf("expected X-CF-Broker-VectorClock '{\"node-ord\":5}', got '%s'", rec.Header().Get("X-CF-Broker-VectorClock"))
+	}
+}
