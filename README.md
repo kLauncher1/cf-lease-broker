@@ -18,6 +18,7 @@
 
 ## ⚡ Highlights
 
+- **Edge Key-Value Geo-Replication Mesh & Eventual Consistency Engine**: Multi-master asynchronous KV replication across global edge broker instances with vector clock causality tracking, deterministic Last-Write-Wins (LWW) conflict resolution with SHA-256 node ID tie-breaking, state-based Conflict-free Replicated Data Types (PNCounter, Observed-Removed Set with Add-Wins semantics, LWWRegister), and client session vector clock tracking guaranteeing Read-Your-Writes and Monotonic-Read isolation for regional Cloudflare workers (`internal/replication/`).
 - **Adaptive Zero-Copy Compression & Brotli/Zstandard Edge Transcoder**: RFC 7932 Brotli and RFC 8878 Zstandard framing engine in pure Go with zero external dependencies, dynamic content-type detection, quality factor (`q=...`) negotiation, tiered zero-allocation buffer pooling (4KB/64KB/256KB), dynamic 32KB JSON schema dictionary training achieving 70–85% edge bandwidth reduction, and real-time proxy response transcoding (`internal/transcoder/`).
 - **Distributed eBPF Telemetry Pipeline & Anomaly Self-Healing Engine**: Kernel-level socket telemetry capturing TCP receive/send window sizing, EWMA round-trip times, RTT variance/jitter, and packet retransmission metrics with cross-platform driver abstraction. Real-time anomaly detection identifying TCP window collapse (< 4KB), retransmission surges (> 5.0%), and predictive pre-timeout degradation (> 250ms), combined with an autonomous mitigation engine triggering sub-10ms circuit transitions (`Closed` -> `Degraded` -> `Tripped` -> `HalfOpen`) and dynamic standby route diversion (< 15µs verified) (`internal/telemetry/`).
 - **Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding**: Decentralized broker clustering utilizing a consistent-hashing ring with 128 virtual nodes per broker, achieving uniform token lease sharding with minimal $K/N$ rebalancing on membership changes, coupled with a lightweight HMAC-SHA256 authenticated anti-entropy gossip protocol and anycast edge affinity steering (`internal/mesh/`).
@@ -840,10 +841,110 @@ curl -X POST http://localhost:9081/api/transcoder/reset
 
 ---
 
+## 🌐 Edge Key-Value Geo-Replication Mesh & Eventual Consistency Engine
+
+`cf-lease-broker` provides a decentralized, multi-master asynchronous key-value geo-replication subsystem designed for multi-region Cloudflare Worker tenants (`internal/replication/`). It eliminates single-point-of-failure write bottlenecks while mathematically guaranteeing eventual consistency and client session freshness.
+
+```mermaid
+flowchart TD
+    subgraph "Chicago Replica (node-ord)"
+        OrdClient["Client Worker ORD"] -->|"PUT key with RYW"| OrdEngine["GeoReplicationEngine ORD"]
+        OrdEngine -->|"Local Write Clock: {ORD:1}"| OrdStore[("KV Store ORD")]
+        OrdEngine -->|"PNCounter Inc / ORSet Add"| OrdCRDT["CRDT Engine ORD"]
+    end
+
+    subgraph "London Replica (node-lhr)"
+        LhrClient["Client Worker LHR"] -->|"Concurrent Write"| LhrEngine["GeoReplicationEngine LHR"]
+        LhrEngine -->|"Local Write Clock: {LHR:1}"| LhrStore[("KV Store LHR")]
+        LhrEngine -->|"PNCounter Dec / ORSet Add"| LhrCRDT["CRDT Engine LHR"]
+    end
+
+    OrdEngine <==>|"HMAC-SHA256 Anti-Entropy Delta Sync"| LhrEngine
+
+    subgraph "Consistency & Conflict Resolution"
+        VC["Vector Clock Causality Evaluation<br/>(Equal, Before, After, Concurrent)"]
+        LWW["Deterministic LWW Tie-Break<br/>(Timestamp + SHA-256 Node ID)"]
+        CRDTSync["State-Based CRDT Join-Semilattice<br/>(PNCounter Component Max, ORSet Add-Wins)"]
+        RYW["Session Consistency Coordinator<br/>(Read-Your-Writes & Monotonic-Reads)"]
+    end
+
+    OrdEngine -.-> VC
+    LhrEngine -.-> VC
+    VC --> LWW
+    VC --> CRDTSync
+    VC --> RYW
+```
+
+### Core Replication & Consistency Capabilities
+1. **Vector Clock Causality Tracking (`internal/replication/vector_clock.go`)**:
+   - Component-wise logical clock tracking (`nodeA:vA, nodeB:vB`) establishing strict partial ordering.
+   - Detects causal relationships (`ClockEqual`, `ClockBefore`, `ClockAfter`, `ClockConcurrent`).
+   - Resolves concurrent multi-master writes deterministically: higher timestamp wins (LWW); in the rare event of sub-nanosecond collisions, a deterministic SHA-256 node digest breaks ties asymmetrically across all replicas without coordination.
+
+2. **Conflict-Free Replicated Data Types (CRDTs) (`internal/replication/crdt.go`)**:
+   - **PNCounter**: State-based Positive-Negative distributed counter. Commutative, associative, and idempotent join-semilattice where `Merge` computes component-wise maximums across $P$ and $N$ maps.
+   - **ORSet (Observed-Removed Set)**: Add-Wins distributed set tracking active element tags. A concurrent addition on Node A and removal on Node B preserves newly added elements, preventing state loss during partition self-healing.
+   - **LWWRegister**: Last-Write-Wins scalar register incorporating vector clock dominance and deterministic tie-breaking.
+
+3. **Session Consistency Guarantees (`internal/replication/session_consistency.go`)**:
+   - **Read-Your-Writes (RYW)**: Client writes advance the client session vector clock (`X-CF-Broker-VectorClock`). Subsequent reads against lagging regional replicas verify vector clock dominance; if lagging, the engine rejects stale views (`ErrStaleReadViolation`), guaranteeing tenants immediately observe their own updates.
+   - **Monotonic-Read**: Prevents time-travel anomalies where a client reads a newer state at Region A and subsequently observes an older snapshot at Region B.
+
+4. **Cryptographic Anti-Entropy Synchronization (`internal/replication/sync.go`)**:
+   - Generates delta replication packets signed with HMAC-SHA256 digests (`SignPacket` / `VerifyPacket`), ensuring end-to-end payload authenticity across WAN peering links.
+
+### Geo-Replication Curl Examples:
+
+```bash
+# 1. Query geo-replication engine status, vector clock, and active peers
+curl http://localhost:9081/api/replication/status
+
+# 2. Write key with Read-Your-Writes session consistency
+curl -X POST http://localhost:9081/api/replication/put \
+  -H "Content-Type: application/json" \
+  -H "X-CF-Broker-Client-ID: worker-node-01" \
+  -H "X-CF-Broker-Consistency: read_your_writes" \
+  -d '{"namespace":"tenant-alpha","key":"user:profile","value":"{\"tier\":\"pro\"}"}'
+
+# 3. Read key with session vector clock check
+curl "http://localhost:9081/api/replication/get?namespace=tenant-alpha&key=user:profile" \
+  -H "X-CF-Broker-Client-ID: worker-node-01" \
+  -H "X-CF-Broker-Consistency: read_your_writes"
+
+# 4. Mutate distributed PN-Counter CRDT
+curl -X POST http://localhost:9081/api/replication/crdt/counter \
+  -H "Content-Type: application/json" \
+  -d '{"namespace":"analytics","key":"active_leases","delta":5}'
+
+# 5. Mutate distributed ORSet CRDT (Add-Wins)
+curl -X POST http://localhost:9081/api/replication/crdt/set \
+  -H "Content-Type: application/json" \
+  -d '{"namespace":"features","key":"beta_cohort","op":"set_add","element":"tenant-99"}'
+
+# 6. Export delta mutations packet for remote peer replication
+curl http://localhost:9081/api/replication/export
+
+# 7. Query replication telemetry and conflict resolution metrics
+curl http://localhost:9081/api/replication/stats
+```
+
+---
+
 ## 📡 REST API Reference
 
 | Endpoint | Method | Auth | Description |
 | :--- | :---: | :---: | :--- |
+| `/api/replication/status` | `GET` | Public | Geo-replication status, local node/region, vector clock, and active peers |
+| `/api/replication/put` | `POST` | Public | Put versioned KV entry with client session tracking and vector clock advance |
+| `/api/replication/get` | `GET` | Public | Get KV entry enforcing Read-Your-Writes or Monotonic-Read consistency |
+| `/api/replication/delete` | `DELETE` | Public | Mark KV entry as tombstone with vector clock propagation |
+| `/api/replication/crdt/counter` | `POST` | Public | Distributed PN-Counter CRDT increment/decrement with state-based merge |
+| `/api/replication/crdt/set` | `POST` | Public | Distributed Observed-Removed Set (ORSet) Add-Wins element mutation |
+| `/api/replication/sync` | `POST` | Public | Ingest HMAC-SHA256 authenticated peer delta replication batch |
+| `/api/replication/export` | `GET` | Public | Export local delta replication packet for peer synchronization |
+| `/api/replication/peers` | `GET` | Public | List all registered geo-replication mesh replica peer nodes |
+| `/api/replication/stats` | `GET` | Public | Telemetry metrics: conflict resolutions, CRDT ops, and RYW hits |
+| `/api/replication/reset` | `POST` | Public | Reset replication store and counters for test isolation |
 | `/api/transcoder/status` | `GET` | Public | Transcoder engine status, active algorithms, buffer pool stats, and bandwidth reduction |
 | `/api/transcoder/compress` | `POST` | Public | Compress payload using specified algorithm (gzip, deflate, brotli, zstd) |
 | `/api/transcoder/decompress` | `POST` | Public | Decompress payload with automatic or explicit algorithm detection |

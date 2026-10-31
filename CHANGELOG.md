@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-10-31
+
+### Added
+- **Multi-Master Key-Value Geo-Replication Engine**: Implemented `internal/replication/engine.go`, `internal/replication/sync.go`, and `internal/replication/types.go` coordinating asynchronous multi-master replication across edge broker replicas with versioned KV entries and cryptographic HMAC-SHA256 packet authentication.
+- **Vector Clock Causality Tracker & Deterministic Tie-Breaker**: Implemented `internal/replication/vector_clock.go` providing component-wise logical clocks, causality evaluation (`ClockEqual`, `ClockBefore`, `ClockAfter`, `ClockConcurrent`), JSON serialization, and deterministic Last-Write-Wins (LWW) resolution with SHA-256 node ID tie-breaking for concurrent multi-master conflicts.
+- **State-Based CRDT Primitives**: Implemented `internal/replication/crdt.go` featuring:
+  - **PNCounter**: Commutative, associative, and idempotent Positive-Negative distributed counter CRDT supporting lock-free concurrent increments and decrements.
+  - **ORSet (Observed-Removed Set)**: Add-Wins distributed set CRDT supporting concurrent element additions and removals with unique tag tracking and deterministic state convergence.
+  - **LWWRegister**: Last-Write-Wins register combining vector clock causality with deterministic timestamp tie-breaking.
+- **Session Consistency Coordinator (Read-Your-Writes & Monotonic-Reads)**: Implemented `internal/replication/session_consistency.go` tracking client session vector clocks, preventing stale reads, and enforcing `ReadYourWrites` and `MonotonicRead` isolation guarantees across regional Cloudflare worker tenants.
+- **Geo-Replication REST API Handlers**: Implemented `internal/replication/handler.go` mounting `/api/replication/*` in `main.go`, exposing `/api/replication/status`, `/api/replication/put`, `/api/replication/get`, `/api/replication/delete`, `/api/replication/crdt/counter`, `/api/replication/crdt/set`, `/api/replication/sync`, `/api/replication/export`, `/api/replication/peers`, `/api/replication/stats`, and `/api/replication/reset` with strict 64KB `io.LimitReader` request body bounding.
+- **Glassmorphism Geo-Replication Dashboard Card**: Enhanced `web/dist/index.html` with an interactive replication control card featuring live KPI telemetry counters (Local Node/Region, Vector Clock, Replicated Keys, Conflict Resolutions, CRDT Ops, and Consistency Hits), an interactive KV/CRDT mutation panel, and a multi-master conflict and anti-entropy sync testbed.
+- **Exhaustive Replication Test Suite**: Added 13 unit and integration tests in `internal/replication/replication_test.go` verifying vector clock causality, deterministic tie-breaking, PNCounter convergence, ORSet Add-Wins semantics, LWWRegister merging, 3-node multi-master cluster convergence, concurrent conflict resolution, read-your-writes guarantees, monotonic read enforcement, HMAC tampering detection, REST API handlers, 64KB DoS bounding, and 40-goroutine concurrent execution.
+
+### Changed
+- Mounted `/api/replication/` routes on HTTP mux and initialized `GeoReplicationEngine` and `ReplicationHandler` in `main.go`.
+- Added `ReplicationResolver` hook to `ProxyHandler` (`internal/proxy/proxy.go`), annotating reverse proxy responses with `X-CF-Broker-Consistency` and `X-CF-Broker-VectorClock` tracking headers.
+- Added `TestProxyReplicationResolverIntegration` in `internal/proxy/proxy_test.go` verifying reverse proxy consistency header integration.
+- Updated `scripts/ARCHITECTURE_MAP.md` tracking all newly created modules and line counts adhering strictly to the 300-500 line soft ceiling per file.
+- Bumped application version to `0.18.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.17.0] - 2026-10-28
 
 ### Added

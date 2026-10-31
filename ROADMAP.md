@@ -145,9 +145,11 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 ---
 
 ## Release: v0.18.0 (Edge Key-Value Geo-Replication Mesh & Eventual Consistency Engine)
-- [ ] Multi-master asynchronous KV replication across active broker nodes with vector clock conflict resolution.
-- [ ] CRDT primitives for distributed counter and set synchronization across edge clusters.
-- [ ] Read-your-writes and monotonic-read consistency guarantees for regional tenant workers.
+- [x] Multi-master asynchronous KV replication across active broker nodes with vector clock conflict resolution.
+- [x] CRDT primitives (PN-Counter, Observed-Removed Set, and LWW-Register) for distributed counter and set synchronization across edge clusters.
+- [x] Read-your-writes and monotonic-read consistency guarantees for regional tenant workers with session vector clock tracking.
+- [x] RESTful control and replication endpoints under `/api/replication/*` with strict 64KB request body bounding.
+- [x] Glassmorphism dashboard geo-replication management card, live vector clock telemetry, and multi-master conflict simulator.
 
 ---
 
