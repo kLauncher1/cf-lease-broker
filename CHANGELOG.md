@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-10-31
+
+### Added
+- **Multi-Cluster Gateway Federation & Topology Coordinator**: Implemented `internal/federation/engine.go` and `internal/federation/types.go` orchestrating cross-cloud and multi-datacenter broker peering across AWS, GCP, Azure, bare metal, and Cloudflare Edge colos with health heartbeats, automatic route withdrawal, and telemetry tracking.
+- **Encrypted Point-to-Point WAN Tunnel Manager**: Implemented `internal/federation/tunnel.go` managing secure WireGuard overlay tunnels, supporting Noise IK cryptographic handshakes, synthetic latency and jitter probes, automatic link degradation detection (>20% packet loss or >350ms RTT), and aggregate traffic accounting.
+- **Dynamic Boundary Route Advertisement & Overlay Router**: Implemented `internal/federation/overlay.go` providing BGP-style route exchange, multi-exit discriminator (MED) metric comparison, AS-Path evaluation, and deterministic next-hop tunnel selection for cross-cluster tenant services and CIDR subnet destinations.
+- **Multi-Jurisdiction Data Sovereignty & Compliance Validator**: Implemented `internal/federation/sovereignty.go` enforcing geographic data residency mandates across European Union (GDPR), United States (CCPA), and Japan (APPI) regulatory borders, with tenant-specific overrides, data classification filtering (PII, Financial, Healthcare), violation blocking, and circular audit logging.
+- **Federation REST API Endpoints**: Implemented `internal/federation/handler.go` mounting `/api/federation/*` in `main.go`, exposing `/api/federation/status`, `/api/federation/clusters`, `/api/federation/tunnels`, `/api/federation/tunnels/probe`, `/api/federation/tunnels/handshake`, `/api/federation/routes`, `/api/federation/routes/advertise`, `/api/federation/routes/resolve`, `/api/federation/sovereignty/rules`, `/api/federation/sovereignty/validate`, `/api/federation/sovereignty/audit`, and `/api/federation/reset` with strict 64KB `io.LimitReader` request body bounding.
+- **Embedded Glassmorphism Federation Dashboard Card**: Enhanced `web/dist/index.html` with an interactive multi-cluster federation console featuring live KPI telemetry counters (Local Gateway Cluster, WAN WireGuard Tunnels, Boundary Overlay Routes, Data Sovereignty Compliance, and Federated Requests Forwarded), an interactive WAN tunnel simulator with Transatlantic, Transpacific, and Degraded link presets, and an overlay route and sovereignty validation inspector.
+- **Exhaustive Federation Test Suite**: Added 13 unit and integration tests in `internal/federation/federation_test.go` verifying cluster registration and deterministic sorting, WAN tunnel lifecycle and probing, WireGuard Noise IK handshakes, overlay route metric and AS-Path resolution, dynamic route withdrawal and failover, GDPR, CCPA, and APPI data sovereignty compliance, tenant policy overrides, end-to-end federated routing, HTTP handlers, 64KB request body bounding, and 40-goroutine concurrent access.
+
+### Changed
+- Mounted `/api/federation/` routes on HTTP mux and initialized `FederationEngine` and `FederationHandler` in `main.go`.
+- Added `FederationResolver` hook to `ProxyHandler` (`internal/proxy/proxy.go`), annotating reverse proxy responses with `X-CF-Broker-Federation-Cluster`, `X-CF-Broker-Federation-Route`, `X-CF-Broker-Data-Sovereignty`, and `X-CF-Broker-Federation-Mesh` tracking headers.
+- Added `TestProxyFederationResolverIntegration` in `internal/proxy/proxy_test.go` verifying reverse proxy federation and sovereignty header integration.
+- Updated `scripts/ARCHITECTURE_MAP.md` tracking all newly created modules and line counts adhering strictly to the 300-500 line soft ceiling per file.
+- Bumped application version to `0.19.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.18.0] - 2026-10-31
 
 ### Added

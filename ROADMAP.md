@@ -154,9 +154,11 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 ---
 
 ## Release: v0.19.0 (Multi-Cluster Gateway Federation & WAN Mesh)
-- [ ] Cross-cloud and multi-datacenter broker federation over secure WAN tunnels.
-- [ ] Dynamic boundary route advertisement with WireGuard overlay mesh.
-- [ ] Global tenant lease routing with localized data sovereignty enforcement.
+- [x] Cross-cloud and multi-datacenter broker federation over secure WireGuard WAN tunnels.
+- [x] Dynamic boundary route advertisement with overlay routing table and BGP MED metrics.
+- [x] Global tenant lease routing with localized data sovereignty and jurisdiction enforcement (GDPR, CCPA, APPI).
+- [x] RESTful control and inspection endpoints mounted under `/api/federation/*` with strict 64KB request bounding.
+- [x] Embedded glassmorphism dashboard federation control card, interactive WAN tunnel simulator, and data residency validator.
 
 ---
 

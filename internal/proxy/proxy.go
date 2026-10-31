@@ -40,7 +40,8 @@ type ProxyHandler struct {
 	CircuitChecker    func(accountID string) bool
 	TranscoderResolver func(r *http.Request, respHeader http.Header, body []byte) (compressed []byte, encoding string, savings float64)
 	ReplicationResolver func(r *http.Request) (status string, clock string)
-	MaxRetries       int
+	FederationResolver  func(r *http.Request) (clusterID, route, sovereigntyZone string, isFederated bool)
+	MaxRetries          int
 	MaxBodyBytes     int64
 }
 
@@ -389,6 +390,17 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 		}
 	}
 
+	if p.FederationResolver != nil && r != nil {
+		if clusterID, route, zone, isFed := p.FederationResolver(r); clusterID != "" {
+			w.Header().Set("X-CF-Broker-Federation-Cluster", clusterID)
+			w.Header().Set("X-CF-Broker-Federation-Route", route)
+			w.Header().Set("X-CF-Broker-Data-Sovereignty", zone)
+			if isFed {
+				w.Header().Set("X-CF-Broker-Federation-Mesh", "active")
+			}
+		}
+	}
+
 	if p.TranscoderResolver != nil && r != nil {
 		rawBody, err := io.ReadAll(resp.Body)
 		if err == nil {
@@ -420,6 +432,11 @@ func (p *ProxyHandler) SetTranscoderResolver(fn func(r *http.Request, respHeader
 // SetReplicationResolver registers a geo-replication consistency resolver for proxy responses.
 func (p *ProxyHandler) SetReplicationResolver(fn func(r *http.Request) (string, string)) {
 	p.ReplicationResolver = fn
+}
+
+// SetFederationResolver registers a multi-cluster federation route resolver for proxy responses.
+func (p *ProxyHandler) SetFederationResolver(fn func(r *http.Request) (clusterID, route, sovereigntyZone string, isFederated bool)) {
+	p.FederationResolver = fn
 }
 
 func (p *ProxyHandler) writePoolExhaustedError(w http.ResponseWriter, attempts int, message string) {
@@ -464,14 +481,8 @@ func isFailoverStatusCode(status int) bool {
 
 func isHopByHop(canonicalKey string) bool {
 	switch canonicalKey {
-	case "Connection",
-		"Keep-Alive",
-		"Proxy-Authenticate",
-		"Proxy-Authorization",
-		"Te",
-		"Trailers",
-		"Transfer-Encoding",
-		"Upgrade":
+	case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization",
+		"Te", "Trailers", "Transfer-Encoding", "Upgrade":
 		return true
 	default:
 		return false
