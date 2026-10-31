@@ -657,3 +657,43 @@ func TestProxyReplicationResolverIntegration(t *testing.T) {
 		t.Fatalf("expected X-CF-Broker-VectorClock '{\"node-ord\":5}', got '%s'", rec.Header().Get("X-CF-Broker-VectorClock"))
 	}
 }
+
+func TestProxyFederationResolverIntegration(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"federated_response"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	handler.SetFederationResolver(func(r *http.Request) (string, string, string, bool) {
+		return "cluster-gcp-eu-central-1", "service-*-eu", "eu-central-1 (GDPR)", true
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/compute", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-CF-Broker-Federation-Cluster") != "cluster-gcp-eu-central-1" {
+		t.Fatalf("expected cluster-gcp-eu-central-1, got %s", rec.Header().Get("X-CF-Broker-Federation-Cluster"))
+	}
+	if rec.Header().Get("X-CF-Broker-Federation-Route") != "service-*-eu" {
+		t.Fatalf("expected service-*-eu, got %s", rec.Header().Get("X-CF-Broker-Federation-Route"))
+	}
+	if rec.Header().Get("X-CF-Broker-Data-Sovereignty") != "eu-central-1 (GDPR)" {
+		t.Fatalf("expected eu-central-1 (GDPR), got %s", rec.Header().Get("X-CF-Broker-Data-Sovereignty"))
+	}
+	if rec.Header().Get("X-CF-Broker-Federation-Mesh") != "active" {
+		t.Fatalf("expected mesh active, got %s", rec.Header().Get("X-CF-Broker-Federation-Mesh"))
+	}
+}

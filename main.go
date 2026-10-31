@@ -18,6 +18,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/cloudflare"
 	"github.com/kLauncher1/cf-lease-broker/internal/compiler"
 	"github.com/kLauncher1/cf-lease-broker/internal/config"
+	"github.com/kLauncher1/cf-lease-broker/internal/federation"
 	"github.com/kLauncher1/cf-lease-broker/internal/mesh"
 	"github.com/kLauncher1/cf-lease-broker/internal/mtls"
 	"github.com/kLauncher1/cf-lease-broker/internal/proxy"
@@ -36,7 +37,7 @@ import (
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.18.0"
+	Version = "0.19.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -175,9 +176,7 @@ func main() {
 	billingMeter := billing.NewBillingMeter(billing.DefaultCloudflareRates())
 	for _, acc := range activeConfig.Accounts {
 		tier := billing.TierPaidStandard
-		if strings.Contains(strings.ToLower(acc.Plan), "free") {
-			tier = billing.TierFree
-		}
+		if strings.Contains(strings.ToLower(acc.Plan), "free") { tier = billing.TierFree }
 		billingMeter.RegisterAccount(acc.ID, tier, 10000000)
 	}
 	costOptimizer := billing.NewCostOptimizer(billingMeter, poolMgr, billing.DefaultMigrationRule())
@@ -203,14 +202,10 @@ func main() {
 
 	proxyHandler.SetColoResolver(func(r *http.Request) (string, float64) {
 		country := r.Header.Get("CF-IPCountry")
-		if country == "" {
-			country = r.Header.Get("X-Country-Code")
-		}
+		if country == "" { country = r.Header.Get("X-Country-Code") }
 		loc := radar.GeoPoint{}
 		if country != "" {
-			if geo, found := radar.CountryToGeo(country); found {
-				loc = geo
-			}
+			if geo, found := radar.CountryToGeo(country); found { loc = geo }
 		}
 		tenantID := r.Header.Get("X-Tenant-ID")
 		var rec radar.RouteRecommendation
@@ -254,9 +249,7 @@ func main() {
 	sandboxHandler := sandbox.NewSandboxHandler(sandboxEngine)
 	proxyHandler.SetSandboxResolver(func(r *http.Request) (string, int) {
 		tenantID := r.Header.Get("X-Tenant-ID")
-		if tenantID == "" {
-			tenantID = "default"
-		}
+		if tenantID == "" { tenantID = "default" }
 		if inst, err := sandboxEngine.GetOrCreateInstance(tenantID, "inst-0"); err == nil {
 			return string(inst.Status), inst.Memory.Pages()
 		}
@@ -264,9 +257,8 @@ func main() {
 	})
 
 	// Multi-Region Anycast Edge Mesh & Dynamic Peer Sharding
-	meshNodeID := os.Getenv("CF_MESH_NODE_ID")
+	meshNodeID, meshRegion := os.Getenv("CF_MESH_NODE_ID"), os.Getenv("CF_MESH_REGION")
 	if meshNodeID == "" { meshNodeID = "broker-iad-" + port }
-	meshRegion := os.Getenv("CF_MESH_REGION")
 	if meshRegion == "" { meshRegion = "iad" }
 	meshSecret := []byte(os.Getenv("CF_MESH_SECRET"))
 	if len(meshSecret) == 0 { meshSecret = []byte("cf-lease-mesh-default-secret-key") }
@@ -341,13 +333,24 @@ func main() {
 		return "eventual", stats.CurrentClock.String()
 	})
 
+	// Multi-Cluster Gateway Federation & WAN Mesh
+	fedEngine := federation.NewFederationEngine(federation.FederationConfig{LocalClusterID: "cluster-edge-" + port, LocalRegion: "us-east-1"})
+	fedEngine.Start()
+	defer fedEngine.Stop()
+	fedHandler := federation.NewFederationHandler(fedEngine)
+	proxyHandler.SetFederationResolver(func(r *http.Request) (string, string, string, bool) {
+		dest := strings.TrimPrefix(r.URL.Path, "/proxy/")
+		if dec, err := fedEngine.ResolveFederationRoute(r.Header.Get("X-Tenant-ID"), dest, "us-east-1", federation.ClassificationGeneral); err == nil && dec != nil && dec.TargetCluster != nil {
+			return dec.TargetCluster.ID, dec.SelectedRoute.DestinationCIDR, dec.TargetCluster.Region, dec.ShouldFederate
+		}
+		return "", "", "", false
+	})
+
 	// Seed encrypted credentials into vault and poolMgr
 	for _, acc := range activeConfig.Accounts {
 		poolMgr.UpsertAccount(acc.ToAccountStatus())
 		token := acc.APIToken
-		if token == "" {
-			token = fmt.Sprintf("cftok_%s_edge_production_token", acc.ID)
-		}
+		if token == "" { token = fmt.Sprintf("cftok_%s_edge_production_token", acc.ID) }
 		_ = vault.StoreCredential(acc.ID, []byte(token))
 	}
 
@@ -391,19 +394,14 @@ func main() {
 	mux.Handle("/api/webhooks/", webhookDispatcher)
 	mux.Handle("/proxy/", proxyHandler)
 	mux.Handle("/api/security/", authMgr.RequireAuth(vault))
-	regPair("/api/config", authMgr.RequireAuth(hotReloader))
-	regPair("/api/compiler", compilerHandler)
-	regPair("/raft", raftHandler)
-	regPair("/api/mtls", mtlsHandler)
-	regPair("/api/billing", billingHandler)
-	regPair("/api/radar", radarHandler)
-	regPair("/api/rotator", rotatorHandler)
-	regPair("/api/steering", steeringHandler)
-	regPair("/api/sandbox", sandboxHandler)
-	regPair("/api/mesh", meshHandler)
-	regPair("/api/telemetry", telemetryHandler)
-	regPair("/api/transcoder", transcoderHandler)
-	regPair("/api/replication", replHandler)
+	for path, h := range map[string]http.Handler{
+		"/api/config": authMgr.RequireAuth(hotReloader), "/api/compiler": compilerHandler,
+		"/raft": raftHandler, "/api/mtls": mtlsHandler, "/api/billing": billingHandler,
+		"/api/radar": radarHandler, "/api/rotator": rotatorHandler, "/api/steering": steeringHandler,
+		"/api/sandbox": sandboxHandler, "/api/mesh": meshHandler, "/api/telemetry": telemetryHandler,
+		"/api/transcoder": transcoderHandler, "/api/replication": replHandler,
+		"/api/federation": fedHandler,
+	} { regPair(path, h) }
 
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
 	mux.HandleFunc("/api/auth/revoke", authMgr.RequireAuth(http.HandlerFunc(authMgr.HandleRevokeToken)).ServeHTTP)
@@ -486,7 +484,7 @@ func main() {
 		fmt.Sprintf(" 📡 Web Dashboard Live at http://localhost:%s\n", port) +
 		" 🔒 Vault/JWT · 🔄 HotReload · 🚀 Compiler · 🤝 Raft · 🛡️ mTLS · 💰 Billing\n" +
 		" 🛰️ Radar · 🔄 Rotator · ⚡ HTTP/3 eBPF · 📦 Wasm Sandbox · 🌐 Mesh · 🩺 Telemetry\n" +
-		" 🗜️ Adaptive Compression · 🌐 Key-Value Geo-Replication Active (/api/replication/*)\n" +
+		" 🗜️ Adaptive Compression · 🌐 Geo-Replication · 🌐 Federation Mesh (/api/federation/*)\n" +
 		" 💡 Standalone Single Binary with Embedded Zero-Dependency UI\n" +
 		"=================================================================\n"
 	fmt.Print(banner)

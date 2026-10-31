@@ -1524,6 +1524,137 @@ export default {
       <div id="repl-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
     </section>
 
+    <!-- Multi-Cluster Gateway Federation & WAN Mesh -->
+    <div class="section-header" id="federation-section">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="color: #6366f1;">🌐</span> Multi-Cluster Gateway Federation &amp; WAN Mesh (<code style="font-family: 'JetBrains Mono', monospace; color: #6366f1; font-size: 13px;">/api/federation/*</code>)
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="action-btn" onclick="fetchFederationDiagnostics()" style="font-size: 11px; padding: 4px 10px; background: rgba(99, 102, 241, 0.2); border-color: rgba(99, 102, 241, 0.4); color: #818cf8;">Status &amp; Diagnostics</button>
+        <button class="action-btn" onclick="resetFederationTopology()" style="font-size: 11px; padding: 4px 10px; background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #f87171;">Re-seed Topology</button>
+      </div>
+    </div>
+
+    <section class="federation-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <!-- KPI Metrics Row -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 20px;">
+        <div style="background: var(--bg-surface-elevated); padding: 12px 16px; border-radius: 8px; border-left: 3px solid #6366f1;">
+          <div style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Local Gateway Cluster</div>
+          <div style="font-size: 14px; font-weight: 700; color: #818cf8;" id="fed-local-cluster">cluster-edge (US-East-1)</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;" id="fed-cluster-count">3 federated clusters active</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 12px 16px; border-radius: 8px; border-left: 3px solid #38bdf8;">
+          <div style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">WAN WireGuard Tunnels</div>
+          <div style="font-size: 14px; font-weight: 700; color: #38bdf8;" id="fed-tunnel-summary">2 connected · 81.5ms avg</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;" id="fed-tunnel-bytes">19.1 MB encrypted overlay traffic</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 12px 16px; border-radius: 8px; border-left: 3px solid #10b981;">
+          <div style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Boundary Overlay Routes</div>
+          <div style="font-size: 14px; font-weight: 700; color: #10b981;" id="fed-route-count">3 active boundary routes</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">BGP MED metrics &amp; AS-Path</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 12px 16px; border-radius: 8px; border-left: 3px solid #f59e0b;">
+          <div style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Data Sovereignty Compliance</div>
+          <div style="font-size: 14px; font-weight: 700; color: #f59e0b;" id="fed-sov-rules">2 rules · GDPR &amp; CCPA</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;" id="fed-sov-violations">0 cross-border violations</div>
+        </div>
+        <div style="background: var(--bg-surface-elevated); padding: 12px 16px; border-radius: 8px; border-left: 3px solid #ec4899;">
+          <div style="font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; margin-bottom: 4px;">Federated Requests</div>
+          <div style="font-size: 14px; font-weight: 700; color: #ec4899;" id="fed-requests-forwarded">0 forwarded</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Cross-cloud dynamic dispatch</div>
+        </div>
+      </div>
+
+      <!-- Main Interactive Grid: Left Simulator / Right Resolver -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px;">
+        <!-- Left: WAN Tunnel Simulator & Key Handshake -->
+        <div style="background: var(--bg-surface-elevated); padding: 16px; border-radius: 8px; border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Interactive WAN Tunnel Simulator</span>
+            <div style="display: flex; gap: 6px;">
+              <button class="action-btn" onclick="applyFedPreset('transatlantic')" style="font-size: 10px; padding: 2px 8px;">Transatlantic</button>
+              <button class="action-btn" onclick="applyFedPreset('transpacific')" style="font-size: 10px; padding: 2px 8px;">Transpacific</button>
+              <button class="action-btn" onclick="applyFedPreset('degraded')" style="font-size: 10px; padding: 2px 8px;">Degraded</button>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 100px 90px 80px; gap: 8px;">
+            <div>
+              <label style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Target Tunnel</label>
+              <select id="fed-tunnel-select" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 11px; outline: none;">
+                <option value="tun-wg-iad-fra-01">tun-wg-iad-fra-01 (FRA GCP)</option>
+                <option value="tun-wg-iad-nrt-01">tun-wg-iad-nrt-01 (NRT Azure)</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Latency (ms)</label>
+              <input type="number" id="fed-latency-input" value="81.5" step="0.5" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 11px; outline: none;">
+            </div>
+            <div>
+              <label style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Loss (%)</label>
+              <input type="number" id="fed-loss-input" value="0.01" step="0.01" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 11px; outline: none;">
+            </div>
+            <div>
+              <label style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Jitter (ms)</label>
+              <input type="number" id="fed-jitter-input" value="1.2" step="0.1" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 11px; outline: none;">
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px;">
+            <button class="action-btn" onclick="probeWANTunnel()" style="flex: 1; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-color: rgba(56, 189, 248, 0.4);">⚡ Trigger WAN Latency Probe</button>
+            <button class="action-btn" onclick="performNoiseHandshake()" style="flex: 1; background: rgba(99, 102, 241, 0.2); color: #818cf8; border-color: rgba(99, 102, 241, 0.4);">🔑 Noise IK Handshake</button>
+          </div>
+
+          <div id="fed-tunnel-result" style="display: block; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #f8fafc; border: 1px solid var(--border-subtle); min-height: 85px; max-height: 120px; overflow-y: auto;">
+            <div style="color: var(--text-muted); font-style: italic;">WAN tunnel simulator ready. Select preset or custom parameters to test link quality.</div>
+          </div>
+        </div>
+
+        <!-- Right: Overlay Route Inspector & Sovereignty Validator -->
+        <div style="background: var(--bg-surface-elevated); padding: 16px; border-radius: 8px; border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-main);">Overlay Route &amp; Data Sovereignty Validator</span>
+            <div style="display: flex; gap: 6px;">
+              <button class="action-btn" onclick="applyRoutePreset('eu_pii')" style="font-size: 10px; padding: 2px 8px;">EU PII (GDPR)</button>
+              <button class="action-btn" onclick="applyRoutePreset('us_fin')" style="font-size: 10px; padding: 2px 8px;">US Financial</button>
+              <button class="action-btn" onclick="applyRoutePreset('cross_violation')" style="font-size: 10px; padding: 2px 8px;">Violate GDPR</button>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 120px 1fr 140px; gap: 8px;">
+            <div>
+              <label style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Tenant ID</label>
+              <input type="text" id="fed-tenant-id" value="tenant-eu-client" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 11px; outline: none;">
+            </div>
+            <div>
+              <label style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Destination / Prefix</label>
+              <input type="text" id="fed-dest-input" value="service-billing-eu" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 11px; outline: none;">
+            </div>
+            <div>
+              <label style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">Classification</label>
+              <select id="fed-class-select" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: #fff; padding: 6px 8px; border-radius: 6px; font-size: 11px; outline: none;">
+                <option value="pii">PII (GDPR Enforced)</option>
+                <option value="financial">Financial (CCPA)</option>
+                <option value="general">General (Standard)</option>
+                <option value="healthcare">Healthcare (APPI)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px;">
+            <button class="action-btn" onclick="resolveFederatedRoute()" style="flex: 1; background: rgba(16, 185, 129, 0.2); color: #10b981; border-color: rgba(16, 185, 129, 0.4);">🧭 Resolve Overlay Route</button>
+            <button class="action-btn" onclick="validateDataSovereignty()" style="flex: 1; background: rgba(245, 158, 11, 0.2); color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);">🛡️ Check Sovereignty</button>
+          </div>
+
+          <div id="fed-resolve-result" style="display: block; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #f8fafc; border: 1px solid var(--border-subtle); min-height: 85px; max-height: 120px; overflow-y: auto;">
+            <div style="color: var(--text-muted); font-style: italic;">Route resolver ready. Click "Resolve Overlay Route" to inspect next-hop cluster &amp; data residency.</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="fed-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
+    </section>
+
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
       <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
@@ -1749,6 +1880,9 @@ export default {
         loadSandboxState();
         loadMeshState();
         loadTelemetryState();
+        loadTranscoderState();
+        loadReplicationState();
+        loadFederationState();
       } catch (err) {
         console.error('Failed to load state:', err);
       }
@@ -4322,12 +4456,273 @@ export default {
       }
     }
 
+    // --- Multi-Cluster Gateway Federation & WAN Mesh Logic ---
+    function applyFedPreset(preset) {
+      const tSelect = document.getElementById('fed-tunnel-select');
+      const latInput = document.getElementById('fed-latency-input');
+      const lossInput = document.getElementById('fed-loss-input');
+      const jitterInput = document.getElementById('fed-jitter-input');
+
+      if (preset === 'transatlantic') {
+        tSelect.value = 'tun-wg-iad-fra-01';
+        latInput.value = '81.5';
+        lossInput.value = '0.01';
+        jitterInput.value = '1.2';
+      } else if (preset === 'transpacific') {
+        tSelect.value = 'tun-wg-iad-nrt-01';
+        latInput.value = '145.2';
+        lossInput.value = '0.04';
+        jitterInput.value = '3.4';
+      } else if (preset === 'degraded') {
+        tSelect.value = 'tun-wg-iad-fra-01';
+        latInput.value = '385.0';
+        lossInput.value = '25.5';
+        jitterInput.value = '18.2';
+      }
+    }
+
+    function applyRoutePreset(preset) {
+      const tInput = document.getElementById('fed-tenant-id');
+      const dInput = document.getElementById('fed-dest-input');
+      const cSelect = document.getElementById('fed-class-select');
+
+      if (preset === 'eu_pii') {
+        tInput.value = 'tenant-eu-client';
+        dInput.value = 'service-billing-eu';
+        cSelect.value = 'pii';
+      } else if (preset === 'us_fin') {
+        tInput.value = 'tenant-us-retail';
+        dInput.value = 'service-ledger-us';
+        cSelect.value = 'financial';
+      } else if (preset === 'cross_violation') {
+        tInput.value = 'tenant-eu-client';
+        dInput.value = 'service-analytics-ap';
+        cSelect.value = 'pii';
+      }
+    }
+
+    async function probeWANTunnel() {
+      const tunID = document.getElementById('fed-tunnel-select').value;
+      const latency = parseFloat(document.getElementById('fed-latency-input').value) || 50.0;
+      const loss = parseFloat(document.getElementById('fed-loss-input').value) || 0.0;
+      const jitter = parseFloat(document.getElementById('fed-jitter-input').value) || 1.0;
+      const resultBox = document.getElementById('fed-tunnel-result');
+
+      resultBox.innerHTML = '<span style="color: #38bdf8;">Probing WAN tunnel ' + escapeHtml(tunID) + '...</span>';
+
+      try {
+        const res = await fetch('/api/federation/tunnels/probe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tunnel_id: tunID, latency_ms: latency, loss_pct: loss, jitter_ms: jitter })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Probe failed');
+
+        const t = data.tunnel;
+        const statusColor = t.status === 'connected' ? '#10b981' : '#f59e0b';
+        resultBox.innerHTML = `
+          <div style="color: ${statusColor}; font-weight: 700; margin-bottom: 4px;">WAN Probe Complete: ${escapeHtml(t.id)} (${t.status.toUpperCase()})</div>
+          <div style="color: #f8fafc; font-size: 11px;">Latency: <b>${t.latency_ms.toFixed(1)}ms</b> · Loss: <b>${t.packet_loss_pct.toFixed(2)}%</b> · Jitter: <b>${t.jitter_ms.toFixed(1)}ms</b></div>
+          <div style="color: var(--text-muted); font-size: 10px; margin-top: 2px;">Peer: ${escapeHtml(t.remote_cluster_id)} · MTU: ${t.mtu} · Sent: ${(t.bytes_sent / 1024).toFixed(1)} KB</div>
+        `;
+        loadFederationState();
+      } catch (err) {
+        resultBox.innerHTML = '<span style="color: #ef4444;">Probe Error: ' + escapeHtml(err.message) + '</span>';
+      }
+    }
+
+    async function performNoiseHandshake() {
+      const tunID = document.getElementById('fed-tunnel-select').value;
+      const resultBox = document.getElementById('fed-tunnel-result');
+
+      resultBox.innerHTML = '<span style="color: #818cf8;">Executing Noise IK cryptographic handshake for ' + escapeHtml(tunID) + '...</span>';
+
+      try {
+        const res = await fetch('/api/federation/tunnels/handshake', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tunnel_id: tunID })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Handshake failed');
+
+        const t = data.tunnel;
+        resultBox.innerHTML = `
+          <div style="color: #10b981; font-weight: 700; margin-bottom: 4px;">Noise IK Handshake Established: ${escapeHtml(t.id)}</div>
+          <div style="color: #818cf8; font-size: 11px; word-break: break-all;">Ephemeral PubKey: <code>${escapeHtml(t.peer_public_key || 'verified')}</code></div>
+          <div style="color: var(--text-muted); font-size: 10px; margin-top: 2px;">Protocol: WireGuard 256-bit ChaCha20-Poly1305 · Status: Connected</div>
+        `;
+        loadFederationState();
+      } catch (err) {
+        resultBox.innerHTML = '<span style="color: #ef4444;">Handshake Error: ' + escapeHtml(err.message) + '</span>';
+      }
+    }
+
+    async function resolveFederatedRoute() {
+      const tenant = document.getElementById('fed-tenant-id').value.trim() || '*';
+      const dest = document.getElementById('fed-dest-input').value.trim() || '*';
+      const classification = document.getElementById('fed-class-select').value;
+      const resultBox = document.getElementById('fed-resolve-result');
+
+      resultBox.innerHTML = '<span style="color: #10b981;">Resolving overlay WAN route for ' + escapeHtml(dest) + '...</span>';
+
+      try {
+        const res = await fetch('/api/federation/routes/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenant_id: tenant,
+            destination: dest,
+            client_region: 'us-east-1',
+            classification: classification
+          })
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data.should_federate) {
+          const reason = data.decision?.reason || data.error || 'Blocked by policy';
+          resultBox.innerHTML = `
+            <div style="color: #ef4444; font-weight: 700; margin-bottom: 4px;">Federated Routing Blocked</div>
+            <div style="color: #f87171; font-size: 11px;">${escapeHtml(reason)}</div>
+            <div style="color: var(--text-muted); font-size: 10px; margin-top: 2px;">Data residency mandate prevented cross-border transit.</div>
+          `;
+          loadFederationState();
+          return;
+        }
+
+        const cluster = data.target_cluster || {};
+        const tunnel = data.selected_tunnel || {};
+        const route = data.selected_route || {};
+        resultBox.innerHTML = `
+          <div style="color: #10b981; font-weight: 700; margin-bottom: 4px;">Optimal Overlay Route: ${escapeHtml(route.id || 'direct')}</div>
+          <div style="color: #f8fafc; font-size: 11px;">Target: <b>${escapeHtml(cluster.name || cluster.id)}</b> (${(cluster.region || '').toUpperCase()}) via <b>${escapeHtml(tunnel.id || 'LAN')}</b></div>
+          <div style="color: #38bdf8; font-size: 10px; margin-top: 2px;">Estimated Latency: <b>${(data.routing_latency_ms || 0).toFixed(1)}ms</b> · Sovereignty: <span style="color: #10b981; font-weight: 600;">Compliant (Allowed)</span></div>
+        `;
+        loadFederationState();
+      } catch (err) {
+        resultBox.innerHTML = '<span style="color: #ef4444;">Resolution Error: ' + escapeHtml(err.message) + '</span>';
+      }
+    }
+
+    async function validateDataSovereignty() {
+      const tenant = document.getElementById('fed-tenant-id').value.trim() || '*';
+      const dest = document.getElementById('fed-dest-input').value.trim() || '*';
+      const classification = document.getElementById('fed-class-select').value;
+      const resultBox = document.getElementById('fed-resolve-result');
+
+      let targetRegion = 'eu-central-1';
+      if (dest.includes('us')) targetRegion = 'us-east-1';
+      if (dest.includes('ap')) targetRegion = 'ap-northeast-1';
+
+      resultBox.innerHTML = '<span style="color: #f59e0b;">Evaluating sovereignty policy compliance...</span>';
+
+      try {
+        const res = await fetch('/api/federation/sovereignty/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenant_id: tenant,
+            target_cluster_id: 'cluster-target',
+            target_region: targetRegion,
+            classification: classification
+          })
+        });
+        const data = await res.json();
+
+        if (data.allowed) {
+          resultBox.innerHTML = `
+            <div style="color: #10b981; font-weight: 700; margin-bottom: 4px;">🛡️ Sovereignty Compliance Verified</div>
+            <div style="color: #f8fafc; font-size: 11px;">Tenant: <b>${escapeHtml(tenant)}</b> · Classification: <b>${classification.toUpperCase()}</b> · Region: <b>${targetRegion}</b></div>
+            <div style="color: #10b981; font-size: 10px; margin-top: 2px;">Data residency constraints fully satisfied under regulatory borders.</div>
+          `;
+        } else {
+          resultBox.innerHTML = `
+            <div style="color: #ef4444; font-weight: 700; margin-bottom: 4px;">⚠️ Data Sovereignty Violation Detected</div>
+            <div style="color: #f87171; font-size: 11px;">Reason: <b>${escapeHtml(data.violation_reason || 'Region restricted')}</b></div>
+            <div style="color: var(--text-muted); font-size: 10px; margin-top: 2px;">Matched Rule: ${escapeHtml(data.matched_rule_id || 'default')} · Cross-border egress prohibited.</div>
+          `;
+        }
+        loadFederationState();
+      } catch (err) {
+        resultBox.innerHTML = '<span style="color: #ef4444;">Compliance Check Error: ' + escapeHtml(err.message) + '</span>';
+      }
+    }
+
+    async function fetchFederationDiagnostics() {
+      const diag = document.getElementById('fed-diag-result');
+      diag.style.display = 'block';
+      diag.textContent = 'Querying multi-cluster federation topology and WAN routes...';
+      try {
+        const res = await fetch('/api/federation/status');
+        const data = await res.json();
+        diag.innerHTML = `
+          <div style="color: #818cf8; font-weight: 700; margin-bottom: 6px;">Multi-Cluster Gateway Federation &amp; WAN Mesh Diagnostics</div>
+          <pre style="color: #f8fafc; font-size: 11px; max-height: 140px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+        `;
+      } catch (err) {
+        diag.innerHTML = '<span style="color: #ef4444;">Error: ' + escapeHtml(err.message) + '</span>';
+      }
+    }
+
+    async function resetFederationTopology() {
+      if (!confirm('Re-seed multi-cluster federation topology to defaults?')) return;
+      try {
+        await fetch('/api/federation/reset', { method: 'POST' });
+        loadFederationState();
+      } catch (err) {
+        alert('Failed to reset federation topology: ' + err.message);
+      }
+    }
+
+    async function loadFederationState() {
+      try {
+        const res = await fetch('/api/federation/status');
+        if (!res.ok) return;
+        const stats = await res.json();
+
+        const localEl = document.getElementById('fed-local-cluster');
+        if (localEl) {
+          localEl.textContent = `${stats.local_cluster_id || 'cluster-edge'} (${(stats.local_region || 'us-east-1').toUpperCase()})`;
+        }
+        const cntEl = document.getElementById('fed-cluster-count');
+        if (cntEl) {
+          cntEl.textContent = `${stats.active_clusters || 0} active (${stats.total_clusters || 0} total) clusters`;
+        }
+        const tunEl = document.getElementById('fed-tunnel-summary');
+        if (tunEl) {
+          tunEl.textContent = `${stats.connected_tunnels || 0} connected · ${(stats.average_wan_latency_ms || 0).toFixed(1)}ms avg`;
+        }
+        const byteEl = document.getElementById('fed-tunnel-bytes');
+        if (byteEl) {
+          byteEl.textContent = `${((stats.total_bytes_transferred || 0) / (1024 * 1024)).toFixed(2)} MB WAN traffic`;
+        }
+        const rtEl = document.getElementById('fed-route-count');
+        if (rtEl) {
+          rtEl.textContent = `${stats.active_routes || 0} active boundary routes`;
+        }
+        const sovEl = document.getElementById('fed-sov-rules');
+        if (sovEl) {
+          sovEl.textContent = `${stats.total_sovereignty_rules || 0} residency rules active`;
+        }
+        const violEl = document.getElementById('fed-sov-violations');
+        if (violEl) {
+          violEl.textContent = `${stats.compliance_violations_blocked || 0} violations blocked`;
+        }
+        const reqEl = document.getElementById('fed-requests-forwarded');
+        if (reqEl) {
+          reqEl.textContent = `${stats.federated_requests_forwarded || 0} forwarded`;
+        }
+      } catch (_) {}
+    }
+
     applyRadarPreset();
     applySandboxPreset();
     applyTranscoderPreset('json');
     loadTelemetryState();
     loadTranscoderState();
     loadReplicationState();
+    loadFederationState();
 
     loadState();
     setInterval(loadState, 2000);
