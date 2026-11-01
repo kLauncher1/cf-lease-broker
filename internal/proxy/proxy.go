@@ -42,6 +42,7 @@ type ProxyHandler struct {
 	ReplicationResolver func(r *http.Request) (status string, clock string)
 	FederationResolver  func(r *http.Request) (clusterID, route, sovereigntyZone string, isFederated bool)
 	ZKProofResolver     func(r *http.Request) (status, statement string, latencyUs int64)
+	PQCResolver         func(r *http.Request) (kemAlg, dsaAlg, hybridStatus string, latencyUs int64)
 	MaxRetries          int
 	MaxBodyBytes     int64
 }
@@ -419,6 +420,23 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 		}
 	}
 
+	if p.PQCResolver != nil && r != nil {
+		if kem, dsa, hybrid, lat := p.PQCResolver(r); kem != "" || dsa != "" {
+			if kem != "" {
+				w.Header().Set("X-CF-Broker-PQC-KEM", kem)
+			}
+			if dsa != "" {
+				w.Header().Set("X-CF-Broker-PQC-Signature", dsa)
+			}
+			if hybrid != "" {
+				w.Header().Set("X-CF-Broker-PQC-Hybrid", hybrid)
+			}
+			if lat > 0 {
+				w.Header().Set("X-CF-Broker-PQC-Latency-Us", strconv.FormatInt(lat, 10))
+			}
+		}
+	}
+
 	if p.TranscoderResolver != nil && r != nil {
 		rawBody, err := io.ReadAll(resp.Body)
 		if err == nil {
@@ -457,43 +475,8 @@ func (p *ProxyHandler) SetFederationResolver(fn func(r *http.Request) (clusterID
 	p.FederationResolver = fn
 }
 
-func (p *ProxyHandler) writePoolExhaustedError(w http.ResponseWriter, attempts int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-CF-Broker-Attempts", strconv.Itoa(attempts))
-	w.WriteHeader(http.StatusServiceUnavailable)
-	_ = json.NewEncoder(w).Encode(map[string]any{"error": message, "attempts": attempts})
+// SetPQCResolver registers a post-quantum cryptographic resolver for proxy responses.
+func (p *ProxyHandler) SetPQCResolver(fn func(r *http.Request) (kemAlg, dsaAlg, hybridStatus string, latencyUs int64)) {
+	p.PQCResolver = fn
 }
 
-func parseProxyPath(path string) (service, subPath string, err error) {
-	if !strings.HasPrefix(path, "/proxy/") && path != "/proxy" {
-		return "", "", errors.New("invalid route: path must start with /proxy/")
-	}
-	remainder := strings.TrimPrefix(strings.TrimPrefix(path, "/proxy"), "/")
-	if remainder == "" {
-		return "", "", errors.New("missing service identifier in proxy path")
-	}
-	parts := strings.SplitN(remainder, "/", 2)
-	service = parts[0]
-	if service == "" {
-		return "", "", errors.New("service identifier cannot be empty")
-	}
-	if len(parts) > 1 {
-		subPath = "/" + parts[1]
-	}
-	return service, subPath, nil
-}
-
-func isFailoverStatusCode(status int) bool {
-	return status == http.StatusTooManyRequests || status == http.StatusBadGateway ||
-		status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
-}
-
-func isHopByHop(canonicalKey string) bool {
-	switch canonicalKey {
-	case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization",
-		"Te", "Trailers", "Transfer-Encoding", "Upgrade":
-		return true
-	default:
-		return false
-	}
-}

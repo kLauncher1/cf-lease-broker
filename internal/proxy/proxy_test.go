@@ -734,3 +734,43 @@ func TestProxyZKProofResolverIntegration(t *testing.T) {
 		t.Fatalf("expected X-CF-Broker-ZK-Latency-Us '450', got '%s'", rec.Header().Get("X-CF-Broker-ZK-Latency-Us"))
 	}
 }
+
+func TestProxyPQCResolverIntegration(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"pqc_secure_response"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	handler.SetPQCResolver(func(r *http.Request) (string, string, string, int64) {
+		return "ML-KEM-768", "ML-DSA-65", "hybrid-x25519-active", 280
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/execute", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-CF-Broker-PQC-KEM") != "ML-KEM-768" {
+		t.Fatalf("expected X-CF-Broker-PQC-KEM 'ML-KEM-768', got '%s'", rec.Header().Get("X-CF-Broker-PQC-KEM"))
+	}
+	if rec.Header().Get("X-CF-Broker-PQC-Signature") != "ML-DSA-65" {
+		t.Fatalf("expected X-CF-Broker-PQC-Signature 'ML-DSA-65', got '%s'", rec.Header().Get("X-CF-Broker-PQC-Signature"))
+	}
+	if rec.Header().Get("X-CF-Broker-PQC-Hybrid") != "hybrid-x25519-active" {
+		t.Fatalf("expected X-CF-Broker-PQC-Hybrid 'hybrid-x25519-active', got '%s'", rec.Header().Get("X-CF-Broker-PQC-Hybrid"))
+	}
+	if rec.Header().Get("X-CF-Broker-PQC-Latency-Us") != "280" {
+		t.Fatalf("expected X-CF-Broker-PQC-Latency-Us '280', got '%s'", rec.Header().Get("X-CF-Broker-PQC-Latency-Us"))
+	}
+}

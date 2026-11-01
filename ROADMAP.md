@@ -172,28 +172,38 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 
 ---
 
-## Release: v0.21.0 (Autonomous Multi-Tenant eBPF DDoS Scrubbing & Edge Mitigation)
+## Release: v0.21.0 (Autonomous Quantum-Resistant Post-Quantum Cryptography (PQC) Key Encapsulation)
+- [x] Zero-dependency NIST FIPS 203 (ML-KEM-768/1024) Module-Lattice-Based Key-Encapsulation Mechanism in pure Go.
+- [x] Dual-layer hybrid key exchange combining ML-KEM shared secret with modern ECDH X25519 for defense-in-depth against quantum and classical adversaries.
+- [x] NIST FIPS 204 (ML-DSA-65/87) stateful digital signature verification for zero-trust inter-broker lease vouchers.
+- [x] RFC 6479-inspired 4096-packet sliding-window bitmask anti-replay counter filter tolerating network jitter under high concurrency.
+- [x] Physical CPU jitter entropy sampling with SplitMix64 whitening and NIST SP 800-90B continuous health checks (RCT/APT).
+- [x] High-performance REST API endpoints (`/api/pqc/*`) and interactive glassmorphism dashboard control panel.
+
+---
+
+## Release: v0.22.0 (Autonomous Multi-Tenant eBPF DDoS Scrubbing & Edge Line-Rate Mitigation)
 - [ ] Line-rate XDP packet filter dropping volumetric SYN floods and amplification attacks at zero CPU cost.
 - [ ] Stateful IP reputation scoring and automatic challenge token issuance for anomalous client streams.
 - [ ] Microsecond-scale mitigation telemetry export to edge monitoring mesh.
 
 ---
 
-## Release: v0.22.0 (Edge Hardware Secure Enclave Intel SGX & AMD SEV Memory Attestation)
+## Release: v0.23.0 (Edge Hardware Secure Enclave Intel SGX & AMD SEV Memory Attestation)
 - [ ] Hardware-isolated secure memory enclave shielding cryptographic keys from host OS compromise.
 - [ ] Remote attestation quotes cryptographically verified during inter-broker lease peering.
 - [ ] Confidential computing runtime for zero-trust worker bundle execution.
 
 ---
 
-## Release: v0.23.0 (Quantum Entropy Beacon & Hardware RNG Attestation)
+## Release: v0.24.0 (Quantum Entropy Beacon & Hardware RNG Attestation)
 - [ ] Quantum entropy harvesting from CPU TRNG hardware pipelines and jitter entropy sources.
 - [ ] NIST SP 800-90B continuous health testing and cryptographic randomness extraction for lease tokens.
 - [ ] Zero-trust entropy attestation broadcast across regional broker mesh instances.
 
 ---
 
-## Release: v0.24.0 (Dynamic Line-Rate BGP Anycast Prefix Broadcaster)
+## Release: v0.25.0 (Dynamic Line-Rate BGP Anycast Prefix Broadcaster)
 - [ ] Autonomous BGP session peering with upstream Tier-1 transit providers for custom Anycast IP prefixes.
 - [ ] Line-rate prefix withdrawal and traffic diversion within 5 milliseconds of PoP partition.
 - [ ] Dynamic Community tagging routing tenant requests based on real-time transit pricing and peering agreements.

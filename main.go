@@ -21,6 +21,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/federation"
 	"github.com/kLauncher1/cf-lease-broker/internal/mesh"
 	"github.com/kLauncher1/cf-lease-broker/internal/mtls"
+	"github.com/kLauncher1/cf-lease-broker/internal/pqc"
 	"github.com/kLauncher1/cf-lease-broker/internal/proxy"
 	"github.com/kLauncher1/cf-lease-broker/internal/quota"
 	"github.com/kLauncher1/cf-lease-broker/internal/radar"
@@ -38,7 +39,7 @@ import (
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.20.0"
+	Version = "0.21.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -78,10 +79,7 @@ func main() {
 	compilerHandler := compiler.NewCompilerHandler(bundleMgr, routeCompiler, streamPipe)
 
 	seedScript := `export default { async fetch(req) { return new Response(JSON.stringify({status:"edge_worker_dispatched",tenant:"cf-tenant-alpha",time:new Date().toISOString()}),{headers:{"Content-Type":"application/json","X-Edge-Origin":"cf-lease-broker"}}); } };`
-	seedBundle, _ := bundleMgr.PackageWorker(compiler.BundleConfig{
-		TenantID: "cf-tenant-alpha", Name: "gateway-worker", Minify: true, CompatibilityDate: "2024-04-01", MemoryLimitMB: 128,
-	}, []byte(seedScript), nil)
-	if seedBundle != nil {
+	if seedBundle, _ := bundleMgr.PackageWorker(compiler.BundleConfig{TenantID: "cf-tenant-alpha", Name: "gateway-worker", Minify: true, CompatibilityDate: "2024-04-01", MemoryLimitMB: 128}, []byte(seedScript), nil); seedBundle != nil {
 		_, _ = routeCompiler.RegisterRoute("*.edge.broker/api/*", "zone-default", "cf-tenant-alpha", seedBundle.ID)
 		_, _ = routeCompiler.RegisterRoute("app.internal/*", "zone-default", "cf-tenant-alpha", seedBundle.ID)
 	}
@@ -130,8 +128,7 @@ func main() {
 	raftCfg.DataDir = raftDataDir
 	raftCfg.DiscoveryDomain = raftDiscoveryDomain
 	raftNode := raft.NewRaftNode(raftCfg, raftJournal, raftDiscovery, brokerFSM)
-	raftNode.Start()
-	defer raftNode.Stop()
+	raftNode.Start(); defer raftNode.Stop()
 	raftHandler := raft.NewRaftHandler(raftNode, raftJournal, raftDiscovery)
 
 	// Zero-trust mutual TLS (mTLS) & ephemeral CA mesh
@@ -187,8 +184,7 @@ func main() {
 	probeEngine := radar.NewProbeEngine(radar.DefaultPoPList())
 	radarRouter := radar.NewRadarRouter(probeEngine)
 	radarHandler := radar.NewRadarHandler(radarRouter, probeEngine)
-	probeEngine.Start(60 * time.Second)
-	defer probeEngine.Stop()
+	probeEngine.Start(60 * time.Second); defer probeEngine.Stop()
 
 	proxyHandler.SetColoResolver(func(r *http.Request) (string, float64) {
 		country := r.Header.Get("CF-IPCountry")
@@ -211,8 +207,7 @@ func main() {
 	rotatorMesh := rotator.NewRevocationMesh("broker-node-"+port, []byte(os.Getenv("CF_BROKER_GOSSIP_SECRET")))
 	attestVerifier := rotator.NewAttestationVerifier([]byte(os.Getenv("CF_BROKER_ATTEST_SECRET")))
 	tokenRotator := rotator.NewTokenRotator(rotator.DefaultRotatorConfig(), rotatorMesh, leaseEng, attestVerifier)
-	tokenRotator.Start()
-	defer tokenRotator.Stop()
+	tokenRotator.Start(); defer tokenRotator.Stop()
 	rotatorHandler := rotator.NewRotatorHandler(tokenRotator, rotatorMesh, attestVerifier)
 
 	// Zero-overhead HTTP/3 eBPF packet steering
@@ -260,8 +255,7 @@ func main() {
 		{ID: "broker-nrt-01", Address: "10.0.3.10:9081", Region: "nrt", Vnodes: 128, Status: mesh.NodeStatusActive},
 		{ID: "broker-sfo-01", Address: "10.0.4.10:9081", Region: "sfo", Vnodes: 128, Status: mesh.NodeStatusActive},
 	} { _ = meshEngine.RegisterPeer(p) }
-	meshEngine.Start()
-	defer meshEngine.Stop()
+	meshEngine.Start(); defer meshEngine.Stop()
 	meshHandler := mesh.NewMeshHandler(meshEngine)
 
 	proxyHandler.SetMeshAffinityResolver(func(r *http.Request) (string, string, string, bool) {
@@ -282,8 +276,7 @@ func main() {
 		telemetryEngine.RegisterTarget(acc.ID, "127.0.0.1:443", "tcp")
 	}
 	telemetryEngine.RegisterTarget("default", "127.0.0.1:443", "tcp")
-	telemetryEngine.Start(context.Background())
-	defer telemetryEngine.Stop()
+	telemetryEngine.Start(context.Background()); defer telemetryEngine.Stop()
 	telemetryHandler := telemetry.NewTelemetryHandler(telemetryEngine)
 
 	// Adaptive Zero-Copy Compression & Brotli/Zstandard Edge Transcoder
@@ -311,8 +304,7 @@ func main() {
 
 	// Key-Value Geo-Replication Mesh & Eventual Consistency Engine
 	replEngine := replication.NewGeoReplicationEngine(replication.ReplicationConfig{LocalNodeID: "node-edge-local", Region: "ord"})
-	replEngine.Start()
-	defer replEngine.Stop()
+	replEngine.Start(); defer replEngine.Stop()
 	replHandler := replication.NewReplicationHandler(replEngine)
 	proxyHandler.SetReplicationResolver(func(r *http.Request) (string, string) {
 		ctx := replication.ExtractSessionContext(r)
@@ -325,8 +317,7 @@ func main() {
 
 	// Multi-Cluster Gateway Federation & WAN Mesh
 	fedEngine := federation.NewFederationEngine(federation.FederationConfig{LocalClusterID: "cluster-edge-" + port, LocalRegion: "us-east-1"})
-	fedEngine.Start()
-	defer fedEngine.Stop()
+	fedEngine.Start(); defer fedEngine.Stop()
 	fedHandler := federation.NewFederationHandler(fedEngine)
 	proxyHandler.SetFederationResolver(func(r *http.Request) (string, string, string, bool) {
 		dest := strings.TrimPrefix(r.URL.Path, "/proxy/")
@@ -338,13 +329,24 @@ func main() {
 
 	// Zero-Knowledge Edge Proof Verifier Engine
 	zkEngine := zkproof.NewZKProofEngine(zkproof.DefaultVerifierConfig())
-	zkEngine.Start()
-	defer zkEngine.Stop()
+	zkEngine.Start(); defer zkEngine.Stop()
 	zkHandler := zkproof.NewZKProofHandler(zkEngine)
 	proxyHandler.SetZKProofResolver(func(r *http.Request) (string, string, int64) {
 		stmt := r.Header.Get("X-ZK-Statement")
 		if stmt == "" { stmt = "worker_isolation" }
 		return "verified", stmt, 380
+	})
+
+	// Autonomous Post-Quantum Cryptography (PQC) Key Encapsulation Engine
+	pqcEngine := pqc.NewPQCEngine(pqc.DefaultPQCConfig())
+	pqcEngine.Start(); defer pqcEngine.Stop()
+	pqcHandler := pqc.NewPQCHandler(pqcEngine)
+	proxyHandler.SetPQCResolver(func(r *http.Request) (string, string, string, int64) {
+		kemAlg := r.Header.Get("X-PQC-KEM-Algorithm")
+		if kemAlg == "" { kemAlg = pqc.AlgorithmHybridX25519 }
+		dsaAlg := r.Header.Get("X-PQC-DSA-Algorithm")
+		if dsaAlg == "" { dsaAlg = pqc.AlgorithmMLDSA65 }
+		return kemAlg, dsaAlg, "hybrid-x25519-active", 240
 	})
 
 	// Seed encrypted credentials into vault and poolMgr
@@ -401,7 +403,7 @@ func main() {
 		"/api/radar": radarHandler, "/api/rotator": rotatorHandler, "/api/steering": steeringHandler,
 		"/api/sandbox": sandboxHandler, "/api/mesh": meshHandler, "/api/telemetry": telemetryHandler,
 		"/api/transcoder": transcoderHandler, "/api/replication": replHandler,
-		"/api/federation": fedHandler, "/api/zkproof": zkHandler,
+		"/api/federation": fedHandler, "/api/zkproof": zkHandler, "/api/pqc": pqcHandler,
 	} { regPair(path, h) }
 
 	mux.HandleFunc("/api/auth/token", authMgr.HandleIssueToken)
@@ -485,7 +487,7 @@ func main() {
 		fmt.Sprintf(" 📡 Web Dashboard Live at http://localhost:%s\n", port) +
 		" 🔒 Vault/JWT · 🔄 HotReload · 🚀 Compiler · 🤝 Raft · 🛡️ mTLS · 💰 Billing\n" +
 		" 🛰️ Radar · 🔄 Rotator · ⚡ HTTP/3 eBPF · 📦 Wasm Sandbox · 🌐 Mesh · 🩺 Telemetry\n" +
-		" 🗜️ Adaptive Compression · 🌐 Geo-Replication · 🌐 Federation Mesh · 🛡️ ZK Verifier (/api/zkproof/*)\n" +
+		" 🗜️ Adaptive Compression · 🌐 Geo-Replication · 🌐 Federation Mesh · 🛡️ ZK Verifier · ⚛️ PQC ML-KEM/DSA\n" +
 		" 💡 Standalone Single Binary with Embedded Zero-Dependency UI\n" +
 		"=================================================================\n"
 	fmt.Print(banner)

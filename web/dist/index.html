@@ -1796,6 +1796,104 @@ export default {
       <div id="zk-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
     </section>
 
+    <!-- Autonomous Quantum-Resistant Post-Quantum Cryptography (PQC) Key Encapsulation -->
+    <div class="section-header" id="pqc-section">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="color: #a78bfa;">⚛️</span> Post-Quantum Cryptography (PQC) &amp; Hybrid Key Encapsulation (<code style="font-family: 'JetBrains Mono', monospace; color: #a78bfa; font-size: 13px;">/api/pqc/*</code>)
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="action-btn" onclick="harvestPQCEntropy()" style="font-size: 11px; padding: 4px 10px; background: rgba(167, 139, 250, 0.2); border-color: rgba(167, 139, 250, 0.4); color: #c4b5fd;">Harvest Entropy</button>
+        <button class="action-btn" onclick="fetchPQCDiagnostics()" style="font-size: 11px; padding: 4px 10px; background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.4); color: #93c5fd;">Status &amp; Diagnostics</button>
+        <button class="action-btn" onclick="resetPQCEngine()" style="font-size: 11px; padding: 4px 10px; background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #f87171;">Reset PQC</button>
+      </div>
+    </div>
+
+    <section class="pqc-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <!-- KPI Metrics Row -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px;">
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Active KEM Engine</div>
+          <div id="pqc-kem-alg" style="font-size: 14px; font-weight: 600; color: #a78bfa; font-family: 'JetBrains Mono', monospace;">ML-KEM-768</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">NIST FIPS 203 Lattice</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Active DSA Engine</div>
+          <div id="pqc-dsa-alg" style="font-size: 14px; font-weight: 600; color: #60a5fa; font-family: 'JetBrains Mono', monospace;">ML-DSA-65</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">NIST FIPS 204 Lattice</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Hybrid Dual-Layer</div>
+          <div id="pqc-hybrid-status" style="font-size: 14px; font-weight: 600; color: #34d399; font-family: 'JetBrains Mono', monospace;">ECDH X25519 Active</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Dual Defense-in-Depth</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Entropy Pool Health</div>
+          <div id="pqc-entropy-health" style="font-size: 14px; font-weight: 600; color: #fbbf24; font-family: 'JetBrains Mono', monospace;">8.00 b/sym (Healthy)</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">TRNG + Jitter Conditioned</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Handshake Latency</div>
+          <div id="pqc-avg-latency" style="font-size: 14px; font-weight: 600; color: var(--text-primary); font-family: 'JetBrains Mono', monospace;">~240µs avg</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Sub-Millisecond Edge</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Verified Signatures</div>
+          <div id="pqc-verified-count" style="font-size: 14px; font-weight: 600; color: #10b981; font-family: 'JetBrains Mono', monospace;">0 verified</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Anti-Replay Window RFC 6479</div>
+        </div>
+      </div>
+
+      <!-- Interactive Testing Row -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <!-- Left Column: Hybrid ML-KEM Simulator -->
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div style="font-weight: 600; font-size: 13px; color: var(--text-primary);">⚛️ Hybrid ML-KEM Key Exchange Simulator</div>
+            <select id="pqc-sim-alg" style="font-size: 11px; padding: 3px 8px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 4px; color: var(--text-primary);">
+              <option value="Hybrid-MLKEM768-X25519" selected>Hybrid-MLKEM768-X25519</option>
+              <option value="ML-KEM-768">ML-KEM-768 (Pure Lattice)</option>
+              <option value="ML-KEM-1024">ML-KEM-1024 (High-Security)</option>
+            </select>
+          </div>
+          <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">Simulate full quantum-resistant TLS key exchange: generates ephemeral server keypair, encapsulates ciphertext with client TRNG entropy, and decapsulates shared master secret.</p>
+          <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+            <button class="action-btn" onclick="runPQCHybridHandshake()" style="background: #8b5cf6; color: white; border: none; padding: 6px 14px; font-size: 12px; font-weight: 500; border-radius: 6px; cursor: pointer;">Execute Key Exchange</button>
+            <button class="action-btn" onclick="generatePQCKeypair()" style="background: rgba(139, 92, 246, 0.15); border-color: rgba(139, 92, 246, 0.4); color: #c4b5fd; font-size: 12px;">Create Keypair Session</button>
+          </div>
+          <div id="pqc-kem-result" style="padding: 10px; background: rgba(0,0,0,0.25); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); min-height: 80px; max-height: 160px; overflow-y: auto;">
+            Click &quot;Execute Key Exchange&quot; to test post-quantum encapsulation.
+          </div>
+        </div>
+
+        <!-- Right Column: Zero-Trust ML-DSA Stateful Voucher Signer -->
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div style="font-weight: 600; font-size: 13px; color: var(--text-primary);">🛡️ ML-DSA Stateful Voucher Signer</div>
+            <select id="pqc-dsa-keyid" style="font-size: 11px; padding: 3px 8px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 4px; color: var(--text-primary);">
+              <option value="broker-edge-pqc-root" selected>broker-edge-pqc-root (ML-DSA-65)</option>
+              <option value="broker-edge-pqc-highsec">broker-edge-pqc-highsec (ML-DSA-87)</option>
+            </select>
+          </div>
+          <textarea id="pqc-voucher-input" rows="3" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 11px; padding: 8px; resize: none; margin-bottom: 12px;">{&quot;lease_id&quot;:&quot;lease-edge-001&quot;,&quot;tenant&quot;:&quot;cf-tenant-alpha&quot;,&quot;service&quot;:&quot;Workers&quot;,&quot;quota_mb&quot;:1024}</textarea>
+          <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+            <button class="action-btn" onclick="signPQCVoucher()" style="background: #3b82f6; color: white; border: none; padding: 6px 14px; font-size: 12px; font-weight: 500; border-radius: 6px; cursor: pointer;">Sign Voucher</button>
+            <button class="action-btn" onclick="verifyPQCVoucher()" style="background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.4); color: #34d399; font-size: 12px;">Verify Signature &amp; Anti-Replay</button>
+          </div>
+          <div id="pqc-dsa-result" style="padding: 10px; background: rgba(0,0,0,0.25); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); min-height: 80px; max-height: 160px; overflow-y: auto;">
+            Click &quot;Sign Voucher&quot; to generate a lattice-based stateful signature.
+          </div>
+        </div>
+      </div>
+
+      <div id="pqc-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
+    </section>
+
+
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
       <button class="action-btn" onclick="issueQuickLease()">+ Issue New Lease</button>
@@ -4957,7 +5055,224 @@ export default {
           <div style="color: var(--text-muted);">Commitment: <span style="color: #818cf8;">${escapeHtml(data.commitment.slice(0, 32))}...</span></div>
           <div style="color: #10b981; margin-top: 4px;">✓ Proof points (A, B, C) cryptographically blinded. Click "Verify Proof" to validate.</div>
         `;
-        loadZKState();
+    
+    let lastPQCSignature = null;
+    let lastPQCSession = null;
+
+    async function loadPQCState() {
+      try {
+        const res = await fetch('/api/pqc/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        const stats = data.stats || {};
+
+        const kemEl = document.getElementById('pqc-kem-alg');
+        if (kemEl && data.active_kem_algorithm) kemEl.textContent = data.active_kem_algorithm;
+
+        const dsaEl = document.getElementById('pqc-dsa-alg');
+        if (dsaEl && data.active_dsa_algorithm) dsaEl.textContent = data.active_dsa_algorithm;
+
+        const hyEl = document.getElementById('pqc-hybrid-status');
+        if (hyEl) hyEl.textContent = data.hybrid_exchange_active ? 'ECDH X25519 Active' : 'Pure Lattice Only';
+
+        const entEl = document.getElementById('pqc-entropy-health');
+        if (entEl) entEl.textContent = `${(data.shannon_entropy || 8.0).toFixed(2)} b/sym (${data.entropy_health || 'Healthy'})`;
+
+        const latEl = document.getElementById('pqc-avg-latency');
+        if (latEl) latEl.textContent = `~${(stats.average_handshake_us || 240).toFixed(0)}µs avg`;
+
+        const vEl = document.getElementById('pqc-verified-count');
+        if (vEl) vEl.textContent = `${stats.total_signatures_verified || 0} verified`;
+      } catch (_) {}
+    }
+
+    async function fetchPQCDiagnostics() {
+      const box = document.getElementById('pqc-diag-result');
+      if (!box) return;
+      try {
+        const [statusRes, entRes, statsRes] = await Promise.all([
+          fetch('/api/pqc/status').then(r => r.json()),
+          fetch('/api/pqc/entropy').then(r => r.json()),
+          fetch('/api/pqc/stats').then(r => r.json())
+        ]);
+        box.style.display = 'block';
+        box.innerHTML = `
+          <div style="font-weight: 600; color: #a78bfa; margin-bottom: 6px;">⚛️ Post-Quantum Cryptography Architecture Telemetry</div>
+          <pre style="margin: 0;">${escapeHtml(JSON.stringify({ status: statusRes, entropy_pool: entRes, runtime_stats: statsRes }, null, 2))}</pre>
+        `;
+      } catch (err) {
+        box.style.display = 'block';
+        box.innerHTML = `<span style="color: #ef4444;">Failed to fetch diagnostics: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function harvestPQCEntropy() {
+      const box = document.getElementById('pqc-diag-result');
+      try {
+        const res = await fetch('/api/pqc/entropy/harvest?bytes=64', { method: 'POST' });
+        const data = await res.json();
+        if (box) {
+          box.style.display = 'block';
+          box.innerHTML = `<span style="color: #34d399;">✅ Harvested ${data.bytes_harvested} fresh entropy bytes. Shannon: ${data.shannon_entropy} bits, Min-Entropy: ${data.min_entropy} bits (${data.health}).</span>`;
+        }
+        loadPQCState();
+      } catch (err) {
+        if (box) {
+          box.style.display = 'block';
+          box.innerHTML = `<span style="color: #ef4444;">Harvest failed: ${escapeHtml(err.message)}</span>`;
+        }
+      }
+    }
+
+    async function generatePQCKeypair() {
+      const alg = document.getElementById('pqc-sim-alg').value;
+      const resBox = document.getElementById('pqc-kem-result');
+      try {
+        const res = await fetch('/api/pqc/kem/keypair', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ algorithm: alg, hybrid: true })
+        });
+        const data = await res.json();
+        lastPQCSession = data;
+        resBox.innerHTML = `
+          <div style="color: #34d399; font-weight: 600;">✅ Created KEM Keypair Session: ${data.session_id}</div>
+          <div>Algorithm: <span style="color: #a78bfa;">${data.algorithm}</span></div>
+          <div>Public Key: <span style="color: var(--text-muted); font-size: 10px;">${(data.server_public_key || '').slice(0, 48)}... (${(data.server_public_key || '').length / 2} bytes)</span></div>
+          <div>Latency: <span style="color: #60a5fa;">${data.handshake_latency_us}µs</span></div>
+        `;
+        loadPQCState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function runPQCHybridHandshake() {
+      const alg = document.getElementById('pqc-sim-alg').value;
+      const resBox = document.getElementById('pqc-kem-result');
+      try {
+        resBox.innerHTML = `<div>Handshake in progress...</div>`;
+        const kpRes = await fetch('/api/pqc/kem/keypair', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ algorithm: alg, hybrid: true })
+        });
+        const sess = await kpRes.json();
+        lastPQCSession = sess;
+
+        const encRes = await fetch('/api/pqc/kem/encapsulate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ algorithm: alg, peer_public_key: sess.server_public_key, hybrid: true })
+        });
+        const enc = await encRes.json();
+
+        const decRes = await fetch('/api/pqc/kem/decapsulate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sess.session_id, ciphertext: enc.ciphertext_hex })
+        });
+        const dec = await decRes.json();
+
+        const match = (enc.shared_secret_hex === dec.shared_secret_hex);
+        resBox.innerHTML = `
+          <div style="color: ${match ? '#34d399' : '#ef4444'}; font-weight: 600;">
+            ${match ? '✅ Hybrid Quantum Handshake Complete!' : '❌ Secret Mismatch'}
+          </div>
+          <div>Session: <code>${sess.session_id}</code></div>
+          <div>Shared Master Secret: <code style="color: #a78bfa;">${enc.shared_secret_hex.slice(0, 32)}...</code></div>
+          <div>Handshake Latency: <span style="color: #60a5fa;">${(enc.handshake_latency_us || 0) + (dec.handshake_latency_us || 0)}µs</span></div>
+          <div>Ciphertext Length: ${enc.ciphertext_hex.length / 2} bytes</div>
+        `;
+        loadPQCState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Handshake error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function signPQCVoucher() {
+      const keyID = document.getElementById('pqc-dsa-keyid').value;
+      const rawVoucher = document.getElementById('pqc-voucher-input').value;
+      const resBox = document.getElementById('pqc-dsa-result');
+      try {
+        const voucherObj = JSON.parse(rawVoucher);
+        const res = await fetch('/api/pqc/sign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key_id: keyID, voucher: voucherObj })
+        });
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || 'Signing failed');
+        }
+        const sig = await res.json();
+        lastPQCSignature = sig;
+        resBox.innerHTML = `
+          <div style="color: #34d399; font-weight: 600;">✅ Voucher Signed with ${sig.algorithm}!</div>
+          <div>Key ID: <code>${sig.key_id}</code></div>
+          <div>State Counter: <span style="color: #fbbf24;">${sig.state_counter}</span> (Monotonic)</div>
+          <div>Signature: <span style="color: var(--text-muted); font-size: 10px;">${sig.signature.slice(0, 48)}... (${sig.signature.length / 2} bytes)</span></div>
+          <div>Nonce: <code>${sig.nonce}</code></div>
+        `;
+        loadPQCState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function verifyPQCVoucher() {
+      const resBox = document.getElementById('pqc-dsa-result');
+      const rawVoucher = document.getElementById('pqc-voucher-input').value;
+      if (!lastPQCSignature) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Please sign a voucher first before verifying.</span>`;
+        return;
+      }
+      try {
+        const voucherObj = JSON.parse(rawVoucher);
+        const res = await fetch('/api/pqc/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ voucher: voucherObj, signature: lastPQCSignature })
+        });
+        const data = await res.json();
+        if (data.valid) {
+          resBox.innerHTML += `
+            <div style="color: #10b981; margin-top: 6px; font-weight: 600;">
+              🛡️ Signature Verified &amp; Anti-Replay Counter Passed!
+            </div>
+          `;
+        } else {
+          resBox.innerHTML += `
+            <div style="color: #ef4444; margin-top: 6px; font-weight: 600;">
+              ❌ Signature Rejected (Replay Attack or Tampering Detected)
+            </div>
+          `;
+        }
+        loadPQCState();
+      } catch (err) {
+        resBox.innerHTML += `<div style="color: #ef4444; margin-top: 4px;">Verification error: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function resetPQCEngine() {
+      const box = document.getElementById('pqc-diag-result');
+      try {
+        await fetch('/api/pqc/reset', { method: 'POST' });
+        if (box) {
+          box.style.display = 'block';
+          box.innerHTML = `<span style="color: #34d399;">✅ PQC active sessions and telemetry reset.</span>`;
+        }
+        loadPQCState();
+      } catch (err) {
+        if (box) {
+          box.style.display = 'block';
+          box.innerHTML = `<span style="color: #ef4444;">Reset error: ${escapeHtml(err.message)}</span>`;
+        }
+      }
+    }
+
+    loadZKState();
+    loadPQCState();
       } catch (err) {
         resultBox.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(err.message)}</span>`;
       }
