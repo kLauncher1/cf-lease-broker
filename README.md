@@ -18,6 +18,7 @@
 
 ## ⚡ Highlights
 
+- **Quantum-Resistant Post-Quantum Cryptography (PQC) & Hybrid Key Encapsulation**: Pure Go NIST FIPS 203 (ML-KEM-768/1024) and NIST FIPS 204 (ML-DSA-65/87) cryptographic primitives with zero external dependencies. Features dual-layer hybrid key exchange combining ML-KEM shared secrets with modern ECDH X25519 for defense-in-depth against quantum and classical adversaries, stateful lattice signature verification for zero-trust inter-broker vouchers, RFC 6479 4096-packet sliding-window anti-replay filtering under high concurrency, physical CPU execution jitter and TRNG entropy harvesting conditioned via SplitMix64 and NIST SP 800-90B health tests ($\ge 7.8$ bits/symbol Shannon entropy), and automated reverse proxy PQC header decoration (`internal/pqc/`).
 - **Zero-Knowledge Edge Proof Verifier & Hardware-Assisted Vector Pipeline**: Pure Go cryptographic zero-knowledge proof verification engine based on the BN254 elliptic curve ($y^2 = x^3 + 3 \pmod q$) with zero external Cgo or cryptographic library dependencies. Enables cryptographic attestation of Cloudflare edge worker isolation, anonymous tenant quota compliance via Pedersen vector commitments without API key disclosure, and tamper-evident boundary peering integrity. Features 8-way parallel SIMD batch verification using Schwartz-Zippel randomized linear combinations, sub-millisecond single verification, anti-replay nullifier tracking with automated TTL pruning, and transparent reverse proxy header attestation (`internal/zkproof/`).
 - **Multi-Cluster Gateway Federation & WAN Mesh**: Decentralized cross-cloud and multi-datacenter broker federation coordinating clusters across AWS, GCP, Azure, bare metal, and Cloudflare Edge colos. Features encrypted point-to-point WireGuard WAN tunnels with Noise IK handshakes, dynamic boundary route advertisements with BGP Multi-Exit Discriminator (MED) metric comparison, and localized data sovereignty policy enforcement across European Union (GDPR), United States (CCPA), and Japan (APPI) regulatory borders (`internal/federation/`).
 - **Edge Key-Value Geo-Replication Mesh & Eventual Consistency Engine**: Multi-master asynchronous KV replication across global edge broker instances with vector clock causality tracking, deterministic Last-Write-Wins (LWW) conflict resolution with SHA-256 node ID tie-breaking, state-based Conflict-free Replicated Data Types (PNCounter, Observed-Removed Set with Add-Wins semantics, LWWRegister), and client session vector clock tracking guaranteeing Read-Your-Writes and Monotonic-Read isolation for regional Cloudflare workers (`internal/replication/`).
@@ -113,6 +114,7 @@ node scripts/build_artifacts.mjs --verify
 │  • Prometheus (/metrics) • Sliding Window • Zero-Downtime Hot Reload   │
 ├────────────────────────────────────────────────────────────────────────┤
 │                         net/http HTTP Engine                           │
+│   • /api/pqc/* (ML-KEM/ML-DSA/Entropy) • /api/zkproof/* (BN254/SIMD)   │
 │   • /api/mtls/* (Cert/Verify/TPM)      • /api/compiler/*               │
 │   • /raft/* (Vote/Append/Status)       • /proxy/{svc}/* (mTLS Guarded) │
 │   • /metrics         • /api/auth/*     • /s3/{bkt}/{key}               │
@@ -1124,10 +1126,133 @@ curl http://localhost:9081/api/zkproof/stats
 
 ---
 
+## ⚛️ Quantum-Resistant Post-Quantum Cryptography (PQC) & Hybrid Key Encapsulation
+
+`cf-lease-broker` incorporates a pure Go post-quantum cryptographic subsystem (`internal/pqc/`) implementing NIST FIPS 203 (ML-KEM) and NIST FIPS 204 (ML-DSA) lattice-based algorithms alongside modern elliptic curve cryptography with zero third-party dependencies:
+
+```mermaid
+flowchart TD
+    subgraph "Hybrid Key Encapsulation (FIPS 203 & RFC 7748)"
+        KEMInit[Initiator / Client]
+        KEMResp[Broker Gateway / Peer]
+        KEMInit -->|"Generate ML-KEM-768/1024 + ECDH X25519 Keypair"| KEMPub["Combined Public Key (pk_kem, pk_ecdh)"]
+        KEMPub --> KEMResp
+        KEMResp -->|"Encapsulate: (c_kem, ss_kem) + (c_ecdh, ss_ecdh)"| KEMCipher["Ciphertext (c_kem, c_ecdh)"]
+        KEMCipher --> KEMInit
+        KEMInit -->|"Decapsulate & FO CCA Check"| KEMSecretInit["Hybrid Secret = HMAC-SHA256(ss_kem || ss_ecdh)"]
+        KEMResp --> KEMSecretResp["Hybrid Secret = HMAC-SHA256(ss_kem || ss_ecdh)"]
+    end
+
+    subgraph "Stateful ML-DSA Voucher Verification (FIPS 204)"
+        Voucher[Inter-Broker Lease Voucher]
+        DSASigner[ML-DSA Signer\ninternal/pqc/dsa.go]
+        Voucher --> DSASigner
+        DSASigner -->|"Lattice Signature σ = (z, c)\nMonotonic Sequence Counter"| SignedVoucher[Signed Lease Voucher]
+        SignedVoucher --> VerifierHook[Proxy Hook / REST Verify]
+        VerifierHook --> AntiReplay{RFC 6479\nSliding Window (4096)}
+        AntiReplay -->|Replay / Stale| DenyReplay[HTTP 409 / Reject Replay]
+        AntiReplay -->|Monotonic / In-Window| NormCheck{Rejection Sampling\nCoefficient Norm Check}
+        NormCheck -->|Valid Lattice Relation| AcceptVoucher[X-CF-Broker-PQC-Signature: verified]
+        NormCheck -->|Tampered| DenyDSA[Verification Failed]
+    end
+
+    subgraph "Entropy Harvesting & Health Testing (NIST SP 800-90B)"
+        Jitter[CPU Scheduling & Timer Jitter]
+        TRNG[Hardware TRNG / crypto/rand]
+        Jitter --> SplitMix[SplitMix64 Bit Mixer]
+        TRNG --> SplitMix
+        SplitMix --> Whitening[HMAC-SHA256 Whitener]
+        Whitening --> RCT_APT{SP 800-90B Health Checks\nRCT & APT Tests}
+        RCT_APT -->|Entropy >= 7.8 bits/sym| HealthyPool[Conditioned Entropy Pool]
+        RCT_APT -->|Degraded| FailoverPool[Degraded Warning / Recalibrate]
+    end
+```
+
+### Key Capabilities
+
+1. **Pure Go Module-Lattice Key Encapsulation (ML-KEM-768 & ML-KEM-1024)**:
+   - Evaluates arithmetic over the polynomial quotient ring $R_q = \mathbb{Z}_q[X]/(X^{256} + 1)$ with prime modulus $q = 3329$.
+   - Implements Centered Binomial Distribution (CBD) noise sampling ($\eta = 1$), deterministic message bit threshold encoding ($q/2 \approx 1665$), and Fujisaki-Okamoto CCA-secure decapsulation with implicit rejection keys.
+   - Dual-layer hybrid key exchange combines the ML-KEM shared secret with modern ECDH X25519 (`crypto/ecdh`) via HMAC-SHA256 into a single 32-byte master session key.
+
+2. **Module-Lattice Digital Signatures (ML-DSA-65 & ML-DSA-87)**:
+   - Evaluates arithmetic over $R_q = \mathbb{Z}_q[X]/(X^{256} + 1)$ with prime modulus $q = 8380417$.
+   - Implements Fiat-Shamir with Aborts lattice signing, uniform matrix generation via SHA-256 counter mode, rejection sampling, and strict $\ell_\infty$ coefficient norm bounds.
+   - Signs and verifies inter-broker `LeaseVoucher` structures to enforce zero-trust cluster federation.
+
+3. **RFC 6479 Sliding-Window Anti-Replay Counter Filter**:
+   - Employs a 4096-packet sliding-window bitmask filter (`StateCounterTracker`) tracking monotonic sequence numbers.
+   - Detects and rejects duplicate or stale replay attempts while tolerating network jitter and out-of-order delivery under high-concurrency (40+ goroutines).
+
+4. **Continuous Entropy Harvesting & NIST SP 800-90B Health Testing**:
+   - Gathers unpredictable physical entropy from high-resolution CPU execution timer jitter and OS TRNG (`crypto/rand.Reader`).
+   - Conditions raw jitter samples via a 64-bit SplitMix64 mixer and HMAC-SHA256 whitening.
+   - Runs continuous NIST SP 800-90B health checks: Repetition Count Test (RCT) and Adaptive Proportion Test (APT), verifying Shannon entropy $\ge 7.8$ bits/symbol.
+
+5. **Transparent Reverse Proxy PQC Header Decoration**:
+   - Reverse proxy responses automatically receive `X-CF-Broker-PQC-KEM: ML-KEM-768`, `X-CF-Broker-PQC-Signature: ML-DSA-65`, `X-CF-Broker-PQC-Hybrid: ECDH-X25519+ML-KEM`, and `X-CF-Broker-PQC-Latency-Us` inspection headers.
+
+### Post-Quantum Cryptography Curl Examples
+
+```bash
+# 1. Query PQC subsystem status, entropy health, and session metrics
+curl http://localhost:9081/api/pqc/status
+
+# 2. Generate a Hybrid ML-KEM-768 + ECDH X25519 keypair
+curl -X POST http://localhost:9081/api/pqc/kem/keypair \
+  -H "Content-Type: application/json" \
+  -d '{"algorithm":"ML-KEM-768","hybrid":true}'
+
+# 3. Encapsulate a shared secret against a peer public key
+curl -X POST http://localhost:9081/api/pqc/kem/encapsulate \
+  -H "Content-Type: application/json" \
+  -d '{"public_key":"<base64_encoded_kem_pk>","ecdh_public_key":"<base64_encoded_ecdh_pk>","algorithm":"ML-KEM-768","hybrid":true}'
+
+# 4. Decapsulate ciphertext to recover the shared secret
+curl -X POST http://localhost:9081/api/pqc/kem/decapsulate \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"<session_id>","ciphertext":"<base64_ciphertext>","ecdh_ciphertext":"<base64_ecdh_ct>"}'
+
+# 5. Sign a lease voucher with ML-DSA-65 stateful lattice signature
+curl -X POST http://localhost:9081/api/pqc/sign \
+  -H "Content-Type: application/json" \
+  -d '{"voucher_id":"lse_pqc_demo_01","tenant_id":"tenant-edge-prod","account_id":"cf-tenant-alpha","algorithm":"ML-DSA-65"}'
+
+# 6. Verify an ML-DSA signed voucher with anti-replay tracking
+curl -X POST http://localhost:9081/api/pqc/verify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "voucher_id": "lse_pqc_demo_01",
+    "signature": {
+      "voucher_id": "lse_pqc_demo_01",
+      "signature": "<base64_sig>",
+      "public_key": "<base64_pk>",
+      "algorithm": "ML-DSA-65",
+      "sequence_num": 1,
+      "timestamp_ns": 1730448000000000000
+    }
+  }'
+
+# 7. Harvest physical entropy and evaluate NIST SP 800-90B health metrics
+curl -X POST http://localhost:9081/api/pqc/entropy/harvest
+```
+
+---
+
 ## 📡 REST API Reference
 
 | Endpoint | Method | Auth | Description |
 | :--- | :---: | :---: | :--- |
+| `/api/pqc/status` | `GET` | Public | PQC engine status, active algorithms, entropy health, and session counts |
+| `/api/pqc/kem/keypair` | `POST` | Public | Generate ML-KEM-768/1024 and optional Hybrid ECDH X25519 keypair |
+| `/api/pqc/kem/encapsulate` | `POST` | Public | Encapsulate shared secret against peer KEM and ECDH public keys |
+| `/api/pqc/kem/decapsulate` | `POST` | Public | Decapsulate ciphertext with Fujisaki-Okamoto CCA verification |
+| `/api/pqc/sign` | `POST` | Public | Sign lease voucher with stateful ML-DSA-65/87 lattice signature |
+| `/api/pqc/verify` | `POST` | Public | Verify ML-DSA signed voucher with RFC 6479 anti-replay window |
+| `/api/pqc/entropy` | `GET` | Public | Real-time physical entropy harvester telemetry and Shannon entropy |
+| `/api/pqc/entropy/harvest` | `POST` | Public | Trigger immediate physical CPU jitter and TRNG entropy harvest cycle |
+| `/api/pqc/stats` | `GET` | Public | PQC operational metrics: key exchanges, signatures, and verifications |
+| `/api/pqc/reset` | `POST` | Public | Reset active KEM sessions, DSA peer keys, and performance counters |
 | `/api/zkproof/status` | `GET` | Public | ZK verifier engine status, reference keys, nullifier ledger, and SIMD telemetry |
 | `/api/zkproof/keys` | `GET` | Public | Inspect active reference verification keys for all statement types |
 | `/api/zkproof/prove` | `POST` | Public | Generate succinct ZK proof for worker isolation, quota attestation, or peering |

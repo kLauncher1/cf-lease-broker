@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-11-01
+
+### Added
+- **Autonomous Quantum-Resistant Post-Quantum Cryptography (PQC) Subsystem**: Implemented `internal/pqc/` providing zero-dependency NIST FIPS 203 (ML-KEM) and NIST FIPS 204 (ML-DSA) cryptographic primitives, hybrid classical/post-quantum key encapsulation, digital signatures, and continuous entropy harvesting in pure Go.
+- **Hybrid ML-KEM & ECDH X25519 Key Encapsulation Mechanism**: Implemented `internal/pqc/kem.go` providing pure Go Module-Lattice-Based Key-Encapsulation Mechanism across polynomial ring $R_q = \mathbb{Z}_q[X]/(X^{256} + 1)$ with $q = 3329$:
+  - **ML-KEM-768 & ML-KEM-1024**: Parameterized lattice key generation, CBD error sampling, polynomial ring multiplication, and Fujisaki-Okamoto CCA-secure decapsulation with implicit rejection keys.
+  - **Dual-Layer Hybrid Key Exchange**: Combines ML-KEM shared secret with modern ECDH X25519 (`crypto/ecdh.X25519()`) into a single 32-byte master secret via HMAC-SHA256, ensuring defense-in-depth against both classical and quantum adversaries.
+- **ML-DSA (Dilithium) Stateful Digital Signature Engine**: Implemented `internal/pqc/dsa.go` providing pure Go Module-Lattice-Based Digital Signatures over $R_q = \mathbb{Z}_q[X]/(X^{256} + 1)$ with $q = 8380417$:
+  - **ML-DSA-65 & ML-DSA-87**: Fiat-Shamir with Aborts lattice signature scheme with rejection sampling, sparse challenge polynomials, and strict coefficient norm bounds.
+  - **Anti-Replay Sliding-Window Counter Tracker**: RFC 6479-inspired 4096-packet sliding-window bitmask filter validating monotonic sequence numbers and rejecting replay attempts while tolerating network jitter and out-of-order execution under high concurrency.
+  - **Inter-Broker Voucher Signing**: Cryptographically signs and verifies `LeaseVoucher` instances for zero-trust cross-broker peering.
+- **Quantum & CPU Jitter Entropy Harvester**: Implemented `internal/pqc/entropy.go` harvesting unpredictable physical entropy from CPU execution pipeline timing jitter and hardware TRNG (`crypto/rand.Reader`), conditioned via HMAC-SHA256 whitening with NIST SP 800-90B continuous health testing (Repetition Count Test and Adaptive Proportion Test) and verified $\ge 7.8$ bits/symbol Shannon entropy.
+- **Unified PQC Engine Coordinator**: Implemented `internal/pqc/engine.go` managing ephemeral KEM sessions with automatic TTL expiration, trusted peer public key registries, default root key seeding, and background entropy maintenance loops.
+- **RESTful Post-Quantum Cryptography API**: Implemented `internal/pqc/handler.go` mounting `/api/pqc/*` in `main.go`, exposing `/api/pqc/status`, `/api/pqc/kem/keypair`, `/api/pqc/kem/encapsulate`, `/api/pqc/kem/decapsulate`, `/api/pqc/sign`, `/api/pqc/verify`, `/api/pqc/entropy`, `/api/pqc/entropy/harvest`, `/api/pqc/stats`, and `/api/pqc/reset` with strict 64KB `io.LimitReader` request body bounding.
+- **Glassmorphism Post-Quantum Cryptography Dashboard Card**: Enhanced `web/dist/index.html` with an interactive PQC console featuring live KPI telemetry counters (Active KEM Engine, Active DSA Engine, Hybrid Dual-Layer Mode, Entropy Pool Health, Handshake Latency, and Verified Signatures), an interactive Hybrid Key Exchange Simulator, a Stateful Voucher Signer and Verifier, and on-demand entropy harvesting diagnostics.
+- **Exhaustive Post-Quantum Cryptography Test Suite**: Added 11 unit and integration tests in `internal/pqc/pqc_test.go` verifying SP 800-90B entropy health, ML-KEM-768/1024 encapsulation round-trips, Hybrid X25519 master secret convergence, ciphertext bit tampering detection, ML-DSA-65/87 signing, anti-replay counter enforcement, REST HTTP endpoints, 64KB DoS bounding, and 40-goroutine concurrent execution.
+
+### Changed
+- Refactored `internal/proxy/proxy.go` into `internal/proxy/utils.go`, keeping `proxy.go` at 483 lines safely below the 500-line soft ceiling.
+- Added `PQCResolver` hook to `ProxyHandler` (`internal/proxy/proxy.go`), annotating reverse proxy responses with `X-CF-Broker-PQC-KEM`, `X-CF-Broker-PQC-Signature`, `X-CF-Broker-PQC-Hybrid`, and `X-CF-Broker-PQC-Latency-Us` headers.
+- Added `TestProxyPQCResolverIntegration` in `internal/proxy/proxy_test.go` verifying reverse proxy PQC header propagation.
+- Mounted `/api/pqc/` routes on HTTP mux, initialized `PQCEngine` and `PQCHandler` in `main.go`, and updated console startup banner.
+- Updated `scripts/ARCHITECTURE_MAP.md` tracking all newly created modules and line counts adhering strictly to the 300-500 line soft ceiling per file.
+- Bumped application version to `0.21.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.20.0] - 2026-11-01
 
 ### Added
