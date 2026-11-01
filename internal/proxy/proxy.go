@@ -41,6 +41,7 @@ type ProxyHandler struct {
 	TranscoderResolver func(r *http.Request, respHeader http.Header, body []byte) (compressed []byte, encoding string, savings float64)
 	ReplicationResolver func(r *http.Request) (status string, clock string)
 	FederationResolver  func(r *http.Request) (clusterID, route, sovereigntyZone string, isFederated bool)
+	ZKProofResolver     func(r *http.Request) (status, statement string, latencyUs int64)
 	MaxRetries          int
 	MaxBodyBytes     int64
 }
@@ -216,6 +217,11 @@ func (p *ProxyHandler) SetTelemetryResolver(resolver func(r *http.Request) (stat
 // SetCircuitChecker attaches an optional circuit breaker checker to trigger instant sub-10ms account failover if tripped.
 func (p *ProxyHandler) SetCircuitChecker(checker func(accountID string) bool) {
 	p.CircuitChecker = checker
+}
+
+// SetZKProofResolver attaches an optional zero-knowledge proof verification resolver.
+func (p *ProxyHandler) SetZKProofResolver(fn func(r *http.Request) (status, statement string, latencyUs int64)) {
+	p.ZKProofResolver = fn
 }
 
 var errBodyTooLarge = errors.New("request body too large")
@@ -401,6 +407,18 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 		}
 	}
 
+	if p.ZKProofResolver != nil && r != nil {
+		if status, stmt, lat := p.ZKProofResolver(r); status != "" {
+			w.Header().Set("X-CF-Broker-ZK-Proof", status)
+			if stmt != "" {
+				w.Header().Set("X-CF-Broker-ZK-Statement", stmt)
+			}
+			if lat > 0 {
+				w.Header().Set("X-CF-Broker-ZK-Latency-Us", strconv.FormatInt(lat, 10))
+			}
+		}
+	}
+
 	if p.TranscoderResolver != nil && r != nil {
 		rawBody, err := io.ReadAll(resp.Body)
 		if err == nil {
@@ -443,29 +461,22 @@ func (p *ProxyHandler) writePoolExhaustedError(w http.ResponseWriter, attempts i
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-CF-Broker-Attempts", strconv.Itoa(attempts))
 	w.WriteHeader(http.StatusServiceUnavailable)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"error":    message,
-		"attempts": attempts,
-	})
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": message, "attempts": attempts})
 }
 
 func parseProxyPath(path string) (service, subPath string, err error) {
 	if !strings.HasPrefix(path, "/proxy/") && path != "/proxy" {
 		return "", "", errors.New("invalid route: path must start with /proxy/")
 	}
-
-	remainder := strings.TrimPrefix(path, "/proxy")
-	remainder = strings.TrimPrefix(remainder, "/")
+	remainder := strings.TrimPrefix(strings.TrimPrefix(path, "/proxy"), "/")
 	if remainder == "" {
 		return "", "", errors.New("missing service identifier in proxy path")
 	}
-
 	parts := strings.SplitN(remainder, "/", 2)
 	service = parts[0]
 	if service == "" {
 		return "", "", errors.New("service identifier cannot be empty")
 	}
-
 	if len(parts) > 1 {
 		subPath = "/" + parts[1]
 	}
@@ -473,10 +484,8 @@ func parseProxyPath(path string) (service, subPath string, err error) {
 }
 
 func isFailoverStatusCode(status int) bool {
-	return status == http.StatusTooManyRequests || // 429
-		status == http.StatusBadGateway ||          // 502
-		status == http.StatusServiceUnavailable ||  // 503
-		status == http.StatusGatewayTimeout         // 504
+	return status == http.StatusTooManyRequests || status == http.StatusBadGateway ||
+		status == http.StatusServiceUnavailable || status == http.StatusGatewayTimeout
 }
 
 func isHopByHop(canonicalKey string) bool {

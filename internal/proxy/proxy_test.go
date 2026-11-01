@@ -697,3 +697,40 @@ func TestProxyFederationResolverIntegration(t *testing.T) {
 		t.Fatalf("expected mesh active, got %s", rec.Header().Get("X-CF-Broker-Federation-Mesh"))
 	}
 }
+
+func TestProxyZKProofResolverIntegration(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"zk_verified_response"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	handler.SetZKProofResolver(func(r *http.Request) (string, string, int64) {
+		return "verified", "worker_isolation", 450
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/execute", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-CF-Broker-ZK-Proof") != "verified" {
+		t.Fatalf("expected X-CF-Broker-ZK-Proof 'verified', got '%s'", rec.Header().Get("X-CF-Broker-ZK-Proof"))
+	}
+	if rec.Header().Get("X-CF-Broker-ZK-Statement") != "worker_isolation" {
+		t.Fatalf("expected X-CF-Broker-ZK-Statement 'worker_isolation', got '%s'", rec.Header().Get("X-CF-Broker-ZK-Statement"))
+	}
+	if rec.Header().Get("X-CF-Broker-ZK-Latency-Us") != "450" {
+		t.Fatalf("expected X-CF-Broker-ZK-Latency-Us '450', got '%s'", rec.Header().Get("X-CF-Broker-ZK-Latency-Us"))
+	}
+}
