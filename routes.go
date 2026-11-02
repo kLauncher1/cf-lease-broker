@@ -13,6 +13,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/cloudflare"
 	"github.com/kLauncher1/cf-lease-broker/internal/compiler"
 	"github.com/kLauncher1/cf-lease-broker/internal/config"
+	"github.com/kLauncher1/cf-lease-broker/internal/enclave"
 	"github.com/kLauncher1/cf-lease-broker/internal/federation"
 	"github.com/kLauncher1/cf-lease-broker/internal/mesh"
 	"github.com/kLauncher1/cf-lease-broker/internal/mtls"
@@ -68,6 +69,7 @@ type ServerContext struct {
 	pqcHandler        *pqc.PQCHandler
 	dedupHandler      *wasmdedup.DedupHandler
 	scrubberHandler   *scrubber.ScrubberHandler
+	enclaveHandler    *enclave.EnclaveHandler
 	r2Gateway         *storage.R2Gateway
 	kvCache           *storage.KVCacheLayer
 	webhookDispatcher *storage.WebhookDispatcher
@@ -120,6 +122,7 @@ func buildMux(s *ServerContext) *http.ServeMux {
 		"/api/pqc":         s.pqcHandler,
 		"/api/wasmdedup":   s.dedupHandler,
 		"/api/scrubber":    s.scrubberHandler,
+		"/api/enclave":     s.enclaveHandler,
 	} {
 		regPair(path, h)
 	}

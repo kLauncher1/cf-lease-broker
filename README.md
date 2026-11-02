@@ -18,6 +18,7 @@
 
 ## ⚡ Highlights
 
+- **Edge Hardware Secure Enclave Intel SGX & AMD SEV Memory Attestation**: Hardware-isolated confidential computing memory pool (Enclave Page Cache - EPC) shielding tenant cryptographic keys and tokens from host OS compromise. Features strict EPC page boundary checks with constant-time memory zeroization scrubbing upon page eviction or release, remote attestation quote generation and cryptographic root-of-trust verification binding user data and nonces against MRENCLAVE, MRSIGNER, and TCB levels, anti-replay nonce tracking preventing cross-session replay attacks, hardware-rooted secret sealing and unsealing via AES-256-GCM and HKDF-SHA256, cross-platform Linux kernel SGX/SEV device node probing with seamless userspace confidential emulation fallback, and transparent reverse proxy telemetry integration (`X-CF-Broker-Enclave-Type`, `X-CF-Broker-Enclave-Status`, `X-CF-Broker-Enclave-Quote-ID`, `X-CF-Broker-Enclave-Latency-Us`) (`internal/enclave/`).
 - **Autonomous Multi-Tenant eBPF DDoS Scrubbing & Edge Line-Rate Mitigation**: High-throughput kernel-level XDP packet filtering and stateful IP reputation engine written in pure Go with zero external dependencies. Features line-rate drop filtering for volumetric TCP SYN floods and UDP reflection/amplification attacks (DNS port 53, NTP port 123, SSDP port 1900, Memcached port 11211) at zero CPU overhead, malformed packet parsing, stateful sliding-window IP reputation scoring (0.0 to 100.0) with exponential decay, automatic quarantine banning, cryptographic HMAC-SHA256 proof-of-work challenge token generation and verification, sub-microsecond mitigation latency (< 5.0 µs), and automated reverse proxy edge blocking and header decoration (`internal/scrubber/`).
 - **High-Density Edge Wasm Memory Deduplication & Page Sharing**: Copy-on-Write (CoW) page-table linear memory architecture partitioning WebAssembly instances into 64 KiB pages (`WasmPageSize = 65536`), sharing a canonical immutable zero-page singleton and common framework base pages across multi-tenant Edge Workers. Features fault-on-write page decoupling ensuring strict isolation, sub-millisecond point-in-time snapshot resurrection (<100 µs average latency) for idle microservices, and dynamic background page compaction coalescing private pages and achieving up to 83% physical resident RAM reduction (`internal/wasmdedup/`).
 - **Quantum-Resistant Post-Quantum Cryptography (PQC) & Hybrid Key Encapsulation**: Pure Go NIST FIPS 203 (ML-KEM-768/1024) and NIST FIPS 204 (ML-DSA-65/87) cryptographic primitives with zero external dependencies. Features dual-layer hybrid key exchange combining ML-KEM shared secrets with modern ECDH X25519 for defense-in-depth against quantum and classical adversaries, stateful lattice signature verification for zero-trust inter-broker vouchers, RFC 6479 4096-packet sliding-window anti-replay filtering under high concurrency, physical CPU execution jitter and TRNG entropy harvesting conditioned via SplitMix64 and NIST SP 800-90B health tests ($\ge 7.8$ bits/symbol Shannon entropy), and automated reverse proxy PQC header decoration (`internal/pqc/`).
@@ -1434,10 +1435,140 @@ curl -X POST http://localhost:9081/api/scrubber/unban \
 
 ---
 
+## 🛡️ Edge Hardware Secure Enclave Intel SGX & AMD SEV Memory Attestation
+
+`cf-lease-broker` features a hardware-isolated confidential computing memory subsystem (`internal/enclave/`) that safeguards Cloudflare API tokens, tenant encryption keys, and confidential execution workloads against host OS compromise, unauthorized root inspection, and cross-process side-channels.
+
+```mermaid
+flowchart TD
+    subgraph HostOS["Host Environment & Edge Worker Runtimes"]
+        TenantApp["Edge Worker / Tenant Proxy Stream"]
+        UntrustedHost["Host OS / Kernel Space / Hypervisor"]
+    end
+
+    subgraph SecureEnclave["Confidential Computing Enclave Boundary"]
+        subgraph HardwareDrivers["Hardware Driver & Emulation Layer"]
+            SGXDriver["Intel SGX Driver (/dev/sgx_enclave, /dev/isgx)"]
+            SEVDriver["AMD SEV-SNP Driver (/dev/sev-guest, /dev/sev)"]
+            EmulDriver["Confidential Userspace Emulation Fallback"]
+        end
+
+        subgraph EPCMemoryPool["Enclave Page Cache (EPC) Isolated Memory"]
+            PageAlloc["Page Allocator (128MB Default Ceiling, 4KB Pages)"]
+            BoundsCheck["Strict Tenant Boundary & Range Verification"]
+            ZeroizeRoutine["Constant-Time Zeroize Scrubbing (runtime.KeepAlive)"]
+        end
+
+        subgraph AttestationEngineSub["Remote Attestation & Root-of-Trust"]
+            QuoteGen["Attestation Quote Generator (MRENCLAVE / MRSIGNER / SVN)"]
+            NonceTrackerSub["Anti-Replay Nonce Tracker (Single-Use TTL Cache)"]
+            QuoteVerifier["Constant-Time Quote Verifier (crypto/subtle)"]
+        end
+
+        subgraph SealingSubsystem["Hardware-Rooted Secret Sealer"]
+            HKDFDerivation["HKDF-SHA256 Hardware Key Derivation"]
+            AESGCM["Authenticated AES-256-GCM Encryption"]
+            PolicyBinding["Policy Binding (MRENCLAVE / MRSIGNER AAD)"]
+        end
+
+        subgraph WorkerRunner["Confidential Worker Execution Sandbox"]
+            EphemeralPage["Ephemeral In-Enclave Task Buffer"]
+            ComputeTask["In-Enclave Execution (SHA-256 / Token Verify)"]
+            ScrubOnExit["Zeroize & Free on Function Exit"]
+        end
+    end
+
+    TenantApp -- "POST /api/enclave/quote" --> QuoteGen
+    TenantApp -- "POST /api/enclave/verify" --> QuoteVerifier
+    TenantApp -- "POST /api/enclave/seal" --> AESGCM
+    TenantApp -- "POST /api/enclave/execute" --> EphemeralPage
+
+    SGXDriver -. Hardware Acceleration .-> EPCMemoryPool
+    SEVDriver -. Hardware Acceleration .-> EPCMemoryPool
+    EmulDriver -. Emulated Isolation .-> EPCMemoryPool
+
+    PageAlloc --> BoundsCheck
+    BoundsCheck --> EphemeralPage
+    EphemeralPage --> ComputeTask
+    ComputeTask --> ScrubOnExit
+    ScrubOnExit --> ZeroizeRoutine
+
+    QuoteGen --> NonceTrackerSub
+    QuoteVerifier --> NonceTrackerSub
+
+    HKDFDerivation --> PolicyBinding
+    PolicyBinding --> AESGCM
+
+    UntrustedHost -. "Blocked: Hardware Memory Encryption" .-x SecureEnclave
+```
+
+### Key Enclave Capabilities
+
+- **Hardware-Isolated Enclave Page Cache (EPC)**: Enforces strict tenant memory isolation across 4KB pages within a 128MB EPC hardware memory boundary (`internal/enclave/memory.go`), completely blocking out-of-bounds reads/writes and unauthorized cross-tenant page access.
+- **Hardware Scrubbing on Release**: Instantly scrubs and zeroizes memory pages upon eviction, deallocation, or shutdown using `Zeroize` with `runtime.KeepAlive`, eliminating forensic memory dumps.
+- **Remote Attestation Quotes & Cryptographic Verification**: Generates tamper-evident remote attestation quotes (`internal/enclave/attestation.go`) binding single-use challenge nonces and user data digests against enclave code measurements (`MRENCLAVE`), signer identities (`MRSIGNER`), and security version numbers (`ISVSVN`).
+- **Anti-Replay Nonce Cache**: Employs an in-memory thread-safe `NonceTracker` with TTL expiration, rejecting any replayed, stale, or duplicated quote verification attempts.
+- **Hardware-Rooted AES-256-GCM Secret Sealing**: Seals sensitive tokens and credentials into tamper-resistant `SealedBlob` payloads (`internal/enclave/sealing.go`) using 256-bit keys derived via HKDF-SHA256 bound to hardware root keys and measurement registers under `MRSIGNER` or `MRENCLAVE` policies.
+- **Ephemeral Confidential Task Execution**: Executes sensitive token hashing, signature verification, and payload transformations inside an ephemeral EPC page that is automatically zeroized and freed upon completion (`internal/enclave/engine.go`).
+- **Cross-Platform Device Driver Fallback**: Automatically probes Linux kernel Intel SGX (`/dev/sgx_enclave`, `/dev/isgx`) and AMD SEV (`/dev/sev-guest`, `/dev/sev`) device nodes, with seamless userspace confidential emulation fallback for Windows and macOS.
+- **Reverse Proxy Telemetry Header Integration**: Annotates proxied requests with real-time enclave telemetry headers: `X-CF-Broker-Enclave-Type`, `X-CF-Broker-Enclave-Status`, `X-CF-Broker-Enclave-Quote-ID`, and `X-CF-Broker-Enclave-Latency-Us`.
+
+### Enclave Curl Examples
+
+```bash
+# 1. Query secure enclave status, hardware driver mode, and memory allocation
+curl http://localhost:9081/api/enclave/status
+
+# 2. Inspect comprehensive enclave telemetry and operational latency
+curl http://localhost:9081/api/enclave/stats
+
+# 3. Generate a tamper-evident hardware attestation quote
+curl -X POST http://localhost:9081/api/enclave/quote \
+  -H "Content-Type: application/json" \
+  -d '{"user_data":"tenant=alpha;scope=workers","nonce":"nonce-challenge-98765"}'
+
+# 4. Verify an attestation quote against root-of-trust and anti-replay policy
+curl -X POST http://localhost:9081/api/enclave/verify \
+  -H "Content-Type: application/json" \
+  -d '{"quote":{"quote_id":"quote-test","enclave_type":"confidential-emulation","nonce":"nonce-challenge-98765","signature":"..."},"policy":{"min_isv_svn":1,"max_quote_age_sec":300}}'
+
+# 5. Seal a confidential Cloudflare API token with MRSIGNER policy
+curl -X POST http://localhost:9081/api/enclave/seal \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id":"tenant-alpha","plaintext":"cf-secret-api-token-value","policy":"mrsigner","key_id":"token-vault-key"}'
+
+# 6. Unseal a SealedBlob back into plaintext
+curl -X POST http://localhost:9081/api/enclave/unseal \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id":"tenant-alpha","blob":{"blob_id":"blob-12345","ciphertext":"...","nonce":"...","tag":"...","policy":"mrsigner","key_id":"token-vault-key"}}'
+
+# 7. Execute a confidential computation within an isolated EPC page
+curl -X POST http://localhost:9081/api/enclave/execute \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id":"tenant-alpha","task_type":"sha256","input":"confidential-token-payload"}'
+
+# 8. List cached peer broker attestation quotes
+curl http://localhost:9081/api/enclave/peers
+
+# 9. Cleanly reset enclave state and scrub memory pool
+curl -X POST http://localhost:9081/api/enclave/reset
+```
+
+---
+
 ## 📡 REST API Reference
 
 | Endpoint | Method | Auth | Description |
 | :--- | :---: | :---: | :--- |
+| `/api/enclave/status` | `GET` | Public | Enclave status: active hardware/emulation type, driver node, and EPC allocation |
+| `/api/enclave/stats` | `GET` | Public | Comprehensive telemetry: quotes generated/verified, secrets sealed/unsealed, avg latency |
+| `/api/enclave/quote` | `POST` | Public | Generate signed hardware attestation quote binding user data and single-use challenge nonce |
+| `/api/enclave/verify` | `POST` | Public | Verify remote attestation quote against root keys, freshness, anti-replay, and ISVSVN policy |
+| `/api/enclave/seal` | `POST` | Public | Seal confidential secret via AES-256-GCM with HKDF hardware key derivation under policy |
+| `/api/enclave/unseal` | `POST` | Public | Authenticate and decrypt SealedBlob with measurement verification and buffer zeroization |
+| `/api/enclave/execute` | `POST` | Public | Execute confidential task in ephemeral EPC page with guaranteed post-execution zeroization |
+| `/api/enclave/peers` | `GET` | Public | List cached remote peer broker attestation quotes for mesh attestation |
+| `/api/enclave/reset` | `POST` | Public | Zeroize EPC memory pool, clear nonce registry, and reset operational counters |
 | `/api/scrubber/status` | `GET` | Public | Scrubber status: active driver mode (XDP/Emulated), uptime, and active quarantine counts |
 | `/api/scrubber/stats` | `GET` | Public | Telemetry metrics: inspected/passed/dropped packets, SYN/UDP mitigations, avg latency |
 | `/api/scrubber/inspect` | `POST` | Public | Evaluate raw or synthetic packet through line-rate XDP filter and IP reputation engine |

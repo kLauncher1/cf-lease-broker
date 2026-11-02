@@ -203,9 +203,16 @@ This document outlines the milestones and engineering priorities for `cf-lease-b
 ---
 
 ## Release: v0.24.0 (Edge Hardware Secure Enclave Intel SGX & AMD SEV Memory Attestation)
-- [ ] Hardware-isolated secure memory enclave shielding cryptographic keys from host OS compromise.
-- [ ] Remote attestation quotes cryptographically verified during inter-broker lease peering.
-- [ ] Confidential computing runtime for zero-trust worker bundle execution.
+- [x] Hardware-isolated secure memory enclave pool (Enclave Page Cache) shielding tenant cryptographic keys from host OS compromise.
+- [x] Strict EPC page boundary checks with constant-time memory zeroization scrubbing upon page eviction or release.
+- [x] Remote attestation quote generation and cryptographic root-of-trust verification binding user data and nonces against MRENCLAVE, MRSIGNER, and TCB levels.
+- [x] Anti-replay nonce tracking and quote freshness enforcement preventing replay and cross-session spoofing attacks.
+- [x] Hardware-rooted secret sealing and unsealing via AES-256-GCM and HKDF-SHA256 with MRENCLAVE and MRSIGNER policy binding.
+- [x] Cross-platform Linux kernel SGX/SEV device node probing with seamless userspace confidential emulation fallback.
+- [x] Confidential worker execution runner executing tasks within isolated enclave memory buffers.
+- [x] RESTful control, quote, verify, seal, and execution endpoints mounted under `/api/enclave/*` with 64KB request body bounding.
+- [x] Embedded glassmorphism dashboard control panel with live KPI telemetry, interactive quote verifier, and secret sealing sandbox.
+- [x] Reverse proxy telemetry header integration (`X-CF-Broker-Enclave-Type`, `X-CF-Broker-Enclave-Status`, `X-CF-Broker-Enclave-Quote-ID`, `X-CF-Broker-Enclave-Latency-Us`).
 
 ---
 

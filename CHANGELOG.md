@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-11-02
+
+### Added
+- **Edge Hardware Secure Enclave Intel SGX & AMD SEV Memory Attestation Subsystem**: Implemented `internal/enclave/` delivering hardware-isolated confidential computing memory pools, cryptographic remote attestation quote generation and verification, and hardware-derived secret sealing in pure Go standard library with zero external dependencies.
+- **Hardware-Isolated Enclave Page Cache (EPC) Memory Pool**: Implemented `internal/enclave/memory.go` providing an EPC memory partition (128MB default hardware ceiling, 4KB pages) with strict tenant boundary enforcement, memory access bounds validation, and constant-time zeroization scrubbing (`Zeroize`) upon page release or eviction.
+- **Remote Attestation Quote Generator & Cryptographic Verifier**: Implemented `internal/enclave/attestation.go` generating tamper-evident attestation quotes binding user data and single-use challenge nonces with HMAC-SHA256 signatures over MRENCLAVE, MRSIGNER, and ISVSVN security versioning. Features root-of-trust signature verification, anti-replay nonce tracking with TTL expiration, and flexible verification policies.
+- **Hardware-Rooted Secret Sealing & Unsealing**: Implemented `internal/enclave/sealing.go` utilizing authenticated AES-256-GCM encryption with 256-bit keys derived via HKDF-SHA256 bound to hardware root keys and enclave measurement registers (supporting both `MRSIGNER` and `MRENCLAVE` policies) with intermediate buffer zeroization.
+- **Cross-Platform Enclave Driver Abstraction**: Implemented `internal/enclave/driver_linux.go` and `internal/enclave/driver_other.go` probing Linux kernel SGX (`/dev/sgx_enclave`, `/dev/isgx`) and AMD SEV (`/dev/sev-guest`, `/dev/sev`) device nodes, with transparent userspace confidential emulation fallback for Windows and macOS.
+- **Unified Enclave Engine Coordinator**: Implemented `internal/enclave/engine.go` managing enclave instances, confidential worker execution runners (`ExecuteConfidentialTask`) in ephemeral EPC pages, peer broker attestation quote caching, and thread-safe operational telemetry.
+- **RESTful Enclave Management API**: Implemented `internal/enclave/handler.go` mounting `/api/enclave/*` in `main.go`, exposing `/status`, `/quote`, `/verify`, `/seal`, `/unseal`, `/execute`, `/peers`, `/stats`, and `/reset` with strict 64KB `io.LimitReader` request body bounding.
+- **Interactive Glassmorphism Dashboard Panel**: Enhanced `web/dist/index.html` with an edge hardware secure enclave card featuring live KPI telemetry counters (Enclave Type & Status, EPC Memory Allocation, Attestation Quotes Gen/Ver, and Sealed Secrets & Executions), an interactive Remote Attestation Quote Verifier, and a Secret Sealing & Confidential Worker Sandbox.
+- **Modular Proxy Resolver Refactoring**: Extracted all `Set*Resolver` methods from `internal/proxy/proxy.go` into `internal/proxy/resolvers.go`, reducing `proxy.go` from 493 lines to 441 lines, well below the 450-line target.
+- **Exhaustive Unit & Concurrency Test Suite**: Added 13 comprehensive unit and integration tests in `internal/enclave/enclave_test.go` covering EPC memory allocation and isolation, boundary checks, zeroization scrubbing, quote generation, root-of-trust verification, anti-replay nonces, quote tampering rejection, policy enforcement, AES-256-GCM sealing/unsealing, confidential worker execution, REST endpoints, 64KB DoS bounding, and 40-goroutine concurrent stress testing.
+
+### Changed
+- Added `EnclaveResolver` hook to `ProxyHandler` (`internal/proxy/proxy.go`), annotating reverse proxy responses with `X-CF-Broker-Enclave-Type`, `X-CF-Broker-Enclave-Status`, `X-CF-Broker-Enclave-Quote-ID`, and `X-CF-Broker-Enclave-Latency-Us` telemetry headers.
+- Added `TestProxyEnclaveResolverIntegration` in `internal/proxy/proxy_test.go` verifying reverse proxy enclave telemetry header propagation.
+- Mounted `/api/enclave/*` routes on HTTP mux, initialized `EnclaveEngine` and `EnclaveHandler` in `main.go`, and updated console startup banner.
+- Updated `scripts/ARCHITECTURE_MAP.md` registering all 9 `internal/enclave/` modules, `internal/proxy/resolvers.go`, and updating line counts.
+- Bumped application version to `0.24.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.23.0] - 2026-11-02
 
 ### Added
