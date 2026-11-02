@@ -2100,6 +2100,112 @@ export default {
       <div id="scrubber-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
     </section>
 
+    <!-- Edge Hardware Secure Enclave Intel SGX & AMD SEV Memory Attestation -->
+    <div class="section-header" id="enclave-section">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="color: #10b981;">🛡️</span> Edge Hardware Secure Enclave &amp; Memory Attestation (<code style="font-family: 'JetBrains Mono', monospace; color: #10b981; font-size: 13px;">/api/enclave/*</code>)
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="action-btn" onclick="fetchEnclaveStats()" style="font-size: 11px; padding: 4px 10px; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3); color: #34d399;">Enclave Telemetry</button>
+        <button class="action-btn" onclick="loadEnclaveState()" style="font-size: 11px; padding: 4px 10px; background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.4); color: #93c5fd;">Refresh State</button>
+        <button class="action-btn" onclick="resetEnclaveEngine()" style="font-size: 11px; padding: 4px 10px; background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">Reset Enclave</button>
+      </div>
+    </div>
+
+    <section class="enclave-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <!-- KPI Metrics Row -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px;">
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Hardware Enclave</div>
+          <div id="enclave-type-status" style="font-size: 14px; font-weight: 600; color: #10b981; font-family: 'JetBrains Mono', monospace;">SGX / Active</div>
+          <div id="enclave-driver-desc" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Confidential Memory</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">EPC Memory Ceiling</div>
+          <div id="enclave-epc-usage" style="font-size: 14px; font-weight: 600; color: #38bdf8; font-family: 'JetBrains Mono', monospace;">0 / 128 MB</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Zeroized on Eviction</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Attestation Quotes</div>
+          <div id="enclave-quotes-kpi" style="font-size: 14px; font-weight: 600; color: #a78bfa; font-family: 'JetBrains Mono', monospace;">0 Gen / 0 Ver</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Hardware Quote Bind</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Sealing &amp; Execution</div>
+          <div id="enclave-secrets-kpi" style="font-size: 14px; font-weight: 600; color: #fbbf24; font-family: 'JetBrains Mono', monospace;">0 Sealed / 0 Runs</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">AES-256-GCM Root Key</div>
+        </div>
+      </div>
+
+      <!-- Controls & Interactive Sandboxes Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px;">
+        <!-- Left: Remote Attestation Quote Generator & Verifier -->
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px;">
+          <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; color: var(--text-main); display: flex; align-items: center; justify-content: space-between;">
+            <span>Remote Attestation Quote Verifier</span>
+            <span style="font-size: 10px; padding: 2px 6px; background: rgba(16, 185, 129, 0.15); color: #34d399; border-radius: 4px;">MRENCLAVE / MRSIGNER</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+            <div>
+              <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">User Data / Token Binding</label>
+              <input type="text" id="enclave-user-data" value="lease-token-cf-alpha" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-main); padding: 6px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Anti-Replay Nonce</label>
+              <input type="text" id="enclave-nonce" value="nonce-demo-888" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-main); padding: 6px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px;">
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button class="action-btn" onclick="generateEnclaveQuote()" style="background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.4); color: #34d399; font-size: 12px;">Generate Quote</button>
+            <button class="action-btn" onclick="verifyLastQuote()" style="background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.4); color: #93c5fd; font-size: 12px;">Verify Quote</button>
+          </div>
+
+          <div id="enclave-quote-result" style="padding: 10px; background: rgba(0,0,0,0.25); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); min-height: 80px; max-height: 140px; overflow-y: auto;">
+            Generate an attestation quote to bind ephemeral lease data with hardware enclave measurements (MRENCLAVE, MRSIGNER, ISVSVN).
+          </div>
+        </div>
+
+        <!-- Right: Hardware Secret Sealing & Confidential Worker Sandbox -->
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px;">
+          <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; color: var(--text-main); display: flex; align-items: center; justify-content: space-between;">
+            <span>Hardware Sealing &amp; Confidential Worker</span>
+            <span style="font-size: 10px; padding: 2px 6px; background: rgba(251, 191, 36, 0.15); color: #fbbf24; border-radius: 4px;">AES-256-GCM / EPC</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 8px; margin-bottom: 10px;">
+            <div>
+              <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Secret Plaintext / Task Input</label>
+              <input type="text" id="enclave-plaintext" value="sk_cloudflare_tenant_master_token" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-main); padding: 6px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Sealing Policy</label>
+              <select id="enclave-policy" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-main); padding: 6px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px;">
+                <option value="mrsigner">MRSIGNER</option>
+                <option value="mrenclave">MRENCLAVE</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button class="action-btn" onclick="sealEnclaveSecret()" style="background: rgba(251, 191, 36, 0.2); border-color: rgba(251, 191, 36, 0.4); color: #fbbf24; font-size: 12px;">Seal Secret</button>
+            <button class="action-btn" onclick="unsealEnclaveSecret()" style="background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.4); color: #c084fc; font-size: 12px;">Unseal Last</button>
+            <button class="action-btn" onclick="executeEnclaveWorker()" style="background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.4); color: #34d399; font-size: 12px;">Run Worker</button>
+          </div>
+
+          <div id="enclave-seal-result" style="padding: 10px; background: rgba(0,0,0,0.25); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); min-height: 80px; max-height: 140px; overflow-y: auto;">
+            Seal credentials into encrypted blobs with hardware-derived HKDF keys, or execute zero-trust tasks in isolated memory pages.
+          </div>
+        </div>
+      </div>
+
+      <div id="enclave-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
+    </section>
+
 
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
@@ -6217,6 +6323,222 @@ export default {
       }
     }
 
+    let lastGeneratedQuote = null;
+    let lastSealedBlob = null;
+
+    async function loadEnclaveState() {
+      try {
+        const [statusRes, statsRes] = await Promise.all([
+          fetch('/api/enclave/status').then(r => r.json()).catch(() => null),
+          fetch('/api/enclave/stats').then(r => r.json()).catch(() => null)
+        ]);
+
+        if (statusRes) {
+          const typeEl = document.getElementById('enclave-type-status');
+          if (typeEl) {
+            typeEl.textContent = `${statusRes.enclave_type.toUpperCase()} / ${statusRes.status.toUpperCase()}`;
+          }
+          const descEl = document.getElementById('enclave-driver-desc');
+          if (descEl) {
+            descEl.textContent = statusRes.driver_available ? 'Hardware SGX/SEV Active' : 'Confidential Emulation';
+          }
+        }
+
+        if (statsRes) {
+          const epcEl = document.getElementById('enclave-epc-usage');
+          if (epcEl) {
+            const allocMB = (statsRes.epc_allocated_bytes / (1024 * 1024)).toFixed(1);
+            const totalMB = Math.round(statsRes.epc_total_bytes / (1024 * 1024));
+            epcEl.textContent = `${allocMB} / ${totalMB} MB`;
+          }
+          const qEl = document.getElementById('enclave-quotes-kpi');
+          if (qEl) {
+            qEl.textContent = `${statsRes.quotes_generated} Gen / ${statsRes.quotes_verified} Ver`;
+          }
+          const sEl = document.getElementById('enclave-secrets-kpi');
+          if (sEl) {
+            sEl.textContent = `${statsRes.secrets_sealed} Sealed / ${statsRes.executions_run} Runs`;
+          }
+        }
+      } catch (e) {
+        // Silent background polling
+      }
+    }
+
+    async function fetchEnclaveStats() {
+      const diag = document.getElementById('enclave-diag-result');
+      if (!diag) return;
+      diag.style.display = 'block';
+      diag.innerHTML = '<span style="color: #38bdf8;">Querying Enclave telemetry...</span>';
+      try {
+        const res = await fetch('/api/enclave/stats');
+        const data = await res.json();
+        diag.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <strong style="color: #10b981;">Hardware Secure Enclave SGX/SEV Telemetry</strong>
+            <button onclick="document.getElementById('enclave-diag-result').style.display='none'" style="background: none; border: none; color: #94a3b8; cursor: pointer;">✕</button>
+          </div>
+          <pre style="margin: 0; white-space: pre-wrap; color: #e2e8f0; font-size: 11px;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+        `;
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function generateEnclaveQuote() {
+      const uData = document.getElementById('enclave-user-data')?.value || 'lease-token';
+      const nonce = document.getElementById('enclave-nonce')?.value || 'nonce-' + Date.now();
+      const resEl = document.getElementById('enclave-quote-result');
+      if (resEl) resEl.innerHTML = '<span style="color: #38bdf8;">Generating hardware attestation quote...</span>';
+
+      try {
+        const res = await fetch('/api/enclave/quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_data: uData, nonce: nonce })
+        });
+        const quote = await res.json();
+        lastGeneratedQuote = quote;
+        if (resEl) {
+          resEl.innerHTML = `
+            <div style="color: #34d399; font-weight: 600; margin-bottom: 4px;">Quote Generated: ${escapeHtml(quote.quote_id)}</div>
+            <div><strong>Type:</strong> ${escapeHtml(quote.enclave_type)} | <strong>SVN:</strong> ${quote.measurement ? quote.measurement.isv_svn : 1}</div>
+            <div style="word-break: break-all; color: #94a3b8; font-size: 10px;"><strong>MRENCLAVE:</strong> ${escapeHtml(quote.measurement ? quote.measurement.mrenclave.substring(0, 32) : '')}...</div>
+            <div style="word-break: break-all; color: #94a3b8; font-size: 10px;"><strong>Signature:</strong> ${escapeHtml(quote.signature.substring(0, 32))}...</div>
+          `;
+        }
+        loadEnclaveState();
+      } catch (err) {
+        if (resEl) resEl.innerHTML = `<span style="color: #ef4444;">Quote gen failed: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function verifyLastQuote() {
+      const resEl = document.getElementById('enclave-quote-result');
+      if (!lastGeneratedQuote) {
+        if (resEl) resEl.innerHTML = '<span style="color: #fbbf24;">Please generate a quote first before verifying.</span>';
+        return;
+      }
+      if (resEl) resEl.innerHTML = '<span style="color: #38bdf8;">Cryptographically verifying quote signature &amp; policy...</span>';
+
+      try {
+        const res = await fetch('/api/enclave/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ quote: lastGeneratedQuote })
+        });
+        const result = await res.json();
+        if (resEl) {
+          if (result.valid) {
+            resEl.innerHTML = `
+              <div style="color: #34d399; font-weight: 600;">✅ Quote Verified Successfully</div>
+              <div style="color: #cbd5e1; font-size: 11px; margin-top: 4px;">${escapeHtml(result.reason)}</div>
+              <div style="color: #94a3b8; font-size: 10px; margin-top: 2px;">TCB and measurements authenticated against hardware root of trust.</div>
+            `;
+          } else {
+            resEl.innerHTML = `
+              <div style="color: #ef4444; font-weight: 600;">❌ Quote Verification Rejected</div>
+              <div style="color: #fca5a5; font-size: 11px;">${escapeHtml(result.reason)}</div>
+            `;
+          }
+        }
+        loadEnclaveState();
+      } catch (err) {
+        if (resEl) resEl.innerHTML = `<span style="color: #ef4444;">Verify failed: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function sealEnclaveSecret() {
+      const plain = document.getElementById('enclave-plaintext')?.value || 'secret';
+      const policy = document.getElementById('enclave-policy')?.value || 'mrsigner';
+      const resEl = document.getElementById('enclave-seal-result');
+      if (resEl) resEl.innerHTML = '<span style="color: #38bdf8;">Deriving HKDF key &amp; sealing in AES-256-GCM...</span>';
+
+      try {
+        const res = await fetch('/api/enclave/seal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: 'cf-alpha', plaintext: plain, policy: policy, key_id: 'k-prod-1' })
+        });
+        const blob = await res.json();
+        lastSealedBlob = blob;
+        if (resEl) {
+          resEl.innerHTML = `
+            <div style="color: #fbbf24; font-weight: 600; margin-bottom: 4px;">Secret Sealed: ${escapeHtml(blob.blob_id)}</div>
+            <div><strong>Policy:</strong> ${escapeHtml(blob.policy)} | <strong>Tag:</strong> ${escapeHtml(blob.tag.substring(0, 16))}...</div>
+            <div style="word-break: break-all; color: #94a3b8; font-size: 10px;"><strong>Ciphertext:</strong> ${escapeHtml(blob.ciphertext.substring(0, 32))}...</div>
+          `;
+        }
+        loadEnclaveState();
+      } catch (err) {
+        if (resEl) resEl.innerHTML = `<span style="color: #ef4444;">Seal failed: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function unsealEnclaveSecret() {
+      const resEl = document.getElementById('enclave-seal-result');
+      if (!lastSealedBlob) {
+        if (resEl) resEl.innerHTML = '<span style="color: #fbbf24;">Please seal a secret first before unsealing.</span>';
+        return;
+      }
+      if (resEl) resEl.innerHTML = '<span style="color: #38bdf8;">Authenticating and decrypting sealed blob...</span>';
+
+      try {
+        const res = await fetch('/api/enclave/unseal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: 'cf-alpha', blob: lastSealedBlob })
+        });
+        const data = await res.json();
+        if (resEl) {
+          resEl.innerHTML = `
+            <div style="color: #34d399; font-weight: 600; margin-bottom: 4px;">✅ Secret Authenticated &amp; Unsealed</div>
+            <div style="background: rgba(0,0,0,0.3); padding: 6px; border-radius: 4px; color: #e2e8f0; font-family: 'JetBrains Mono', monospace;">${escapeHtml(data.plaintext)}</div>
+          `;
+        }
+        loadEnclaveState();
+      } catch (err) {
+        if (resEl) resEl.innerHTML = `<span style="color: #ef4444;">Unseal failed: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function executeEnclaveWorker() {
+      const plain = document.getElementById('enclave-plaintext')?.value || 'test-data';
+      const resEl = document.getElementById('enclave-seal-result');
+      if (resEl) resEl.innerHTML = '<span style="color: #38bdf8;">Allocating EPC page &amp; executing inside enclave...</span>';
+
+      try {
+        const res = await fetch('/api/enclave/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tenant_id: 'cf-alpha', task_type: 'sha256', input: plain })
+        });
+        const data = await res.json();
+        if (resEl) {
+          resEl.innerHTML = `
+            <div style="color: #34d399; font-weight: 600; margin-bottom: 4px;">⚡ Enclave Task Finished (${data.duration_us}µs)</div>
+            <div style="font-size: 11px;"><strong>Page ID:</strong> ${data.page_id} (Zeroized on exit)</div>
+            <div style="word-break: break-all; color: #94a3b8; font-size: 10px;"><strong>Hash:</strong> ${escapeHtml(data.output_hash)}</div>
+          `;
+        }
+        loadEnclaveState();
+      } catch (err) {
+        if (resEl) resEl.innerHTML = `<span style="color: #ef4444;">Worker execution failed: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function resetEnclaveEngine() {
+      if (!confirm('Reset all hardware secure enclave state, nonces, and telemetry?')) return;
+      try {
+        await fetch('/api/enclave/reset', { method: 'POST' });
+        loadEnclaveState();
+        document.getElementById('enclave-quote-result').innerHTML = '<span style="color: #34d399;">Enclave state reset.</span>';
+        document.getElementById('enclave-seal-result').innerHTML = '<span style="color: #34d399;">Enclave state reset.</span>';
+      } catch (err) {
+        alert('Reset failed: ' + err.message);
+      }
+    }
+
     applyRadarPreset();
     applySandboxPreset();
     applyTranscoderPreset('json');
@@ -6228,6 +6550,7 @@ export default {
     loadZKState();
     loadWasmDedupState();
     loadScrubberState();
+    loadEnclaveState();
 
     loadState();
     setInterval(loadState, 2000);

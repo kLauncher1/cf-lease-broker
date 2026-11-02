@@ -876,3 +876,43 @@ func TestProxyScrubberResolverIntegration(t *testing.T) {
 		t.Fatalf("expected X-CF-Broker-DDoS-Status 'dropped', got '%s'", recDrop.Header().Get("X-CF-Broker-DDoS-Status"))
 	}
 }
+
+func TestProxyEnclaveResolverIntegration(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"enclave_secure_response"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	handler.SetEnclaveResolver(func(r *http.Request) (string, string, string, int64) {
+		return "intel-sgx", "active", "quote-test-999", 42
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/enclave-endpoint", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-CF-Broker-Enclave-Type") != "intel-sgx" {
+		t.Fatalf("expected X-CF-Broker-Enclave-Type 'intel-sgx', got '%s'", rec.Header().Get("X-CF-Broker-Enclave-Type"))
+	}
+	if rec.Header().Get("X-CF-Broker-Enclave-Status") != "active" {
+		t.Fatalf("expected X-CF-Broker-Enclave-Status 'active', got '%s'", rec.Header().Get("X-CF-Broker-Enclave-Status"))
+	}
+	if rec.Header().Get("X-CF-Broker-Enclave-Quote-ID") != "quote-test-999" {
+		t.Fatalf("expected X-CF-Broker-Enclave-Quote-ID 'quote-test-999', got '%s'", rec.Header().Get("X-CF-Broker-Enclave-Quote-ID"))
+	}
+	if rec.Header().Get("X-CF-Broker-Enclave-Latency-Us") != "42" {
+		t.Fatalf("expected X-CF-Broker-Enclave-Latency-Us '42', got '%s'", rec.Header().Get("X-CF-Broker-Enclave-Latency-Us"))
+	}
+}
+
