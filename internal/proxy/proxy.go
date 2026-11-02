@@ -43,6 +43,7 @@ type ProxyHandler struct {
 	FederationResolver  func(r *http.Request) (clusterID, route, sovereigntyZone string, isFederated bool)
 	ZKProofResolver     func(r *http.Request) (status, statement string, latencyUs int64)
 	PQCResolver         func(r *http.Request) (kemAlg, dsaAlg, hybridStatus string, latencyUs int64)
+	WasmDedupResolver   func(r *http.Request) (status string, sharedPages int, savedBytes int64, resurrectUs int64)
 	MaxRetries          int
 	MaxBodyBytes     int64
 }
@@ -225,51 +226,9 @@ func (p *ProxyHandler) SetZKProofResolver(fn func(r *http.Request) (status, stat
 	p.ZKProofResolver = fn
 }
 
-var errBodyTooLarge = errors.New("request body too large")
-
-func (p *ProxyHandler) bufferRequestBody(r *http.Request) ([]byte, error) {
-	if r.Body == nil {
-		return nil, nil
-	}
-	defer func() { _ = r.Body.Close() }()
-
-	maxBytes := p.MaxBodyBytes
-	if maxBytes <= 0 {
-		maxBytes = DefaultMaxBodyBytes
-	}
-
-	limitedReader := io.LimitReader(r.Body, maxBytes+1)
-	buf, err := io.ReadAll(limitedReader)
-	if err != nil {
-		return nil, err
-	}
-	if int64(len(buf)) > maxBytes {
-		return nil, errBodyTooLarge
-	}
-	return buf, nil
-}
-
-func (p *ProxyHandler) buildTargetURL(service, accountID, subPath, rawQuery string) string {
-	var dest string
-	if p.TargetURLBuilder != nil {
-		dest = p.TargetURLBuilder(service, accountID, subPath)
-	} else {
-		trimmed := strings.TrimPrefix(subPath, "/")
-		if trimmed != "" {
-			dest = fmt.Sprintf("https://%s.%s.workers.dev/%s", service, accountID, trimmed)
-		} else {
-			dest = fmt.Sprintf("https://%s.%s.workers.dev", service, accountID)
-		}
-	}
-
-	if rawQuery != "" {
-		if strings.Contains(dest, "?") {
-			dest += "&" + rawQuery
-		} else {
-			dest += "?" + rawQuery
-		}
-	}
-	return dest
+// SetWasmDedupResolver attaches a Wasm memory deduplication and page sharing resolver.
+func (p *ProxyHandler) SetWasmDedupResolver(fn func(r *http.Request) (status string, sharedPages int, savedBytes int64, resurrectUs int64)) {
+	p.WasmDedupResolver = fn
 }
 
 func (p *ProxyHandler) createUpstreamRequest(r *http.Request, targetURL string, body []byte) (*http.Request, error) {
@@ -433,6 +392,21 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 			}
 			if lat > 0 {
 				w.Header().Set("X-CF-Broker-PQC-Latency-Us", strconv.FormatInt(lat, 10))
+			}
+		}
+	}
+
+	if p.WasmDedupResolver != nil && r != nil {
+		if status, sharedPages, savedBytes, lat := p.WasmDedupResolver(r); status != "" {
+			w.Header().Set("X-CF-Broker-Wasm-Dedup", status)
+			if sharedPages > 0 {
+				w.Header().Set("X-CF-Broker-Wasm-Shared-Pages", strconv.Itoa(sharedPages))
+			}
+			if savedBytes > 0 {
+				w.Header().Set("X-CF-Broker-Wasm-Saved-Bytes", strconv.FormatInt(savedBytes, 10))
+			}
+			if lat > 0 {
+				w.Header().Set("X-CF-Broker-Wasm-Resurrect-Us", strconv.FormatInt(lat, 10))
 			}
 		}
 	}

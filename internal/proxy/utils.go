@@ -3,10 +3,14 @@ package proxy
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
 )
+
+var errBodyTooLarge = errors.New("request body too large")
 
 func (p *ProxyHandler) writePoolExhaustedError(w http.ResponseWriter, attempts int, message string) {
 	w.Header().Set("Content-Type", "application/json")
@@ -47,4 +51,49 @@ func isHopByHop(canonicalKey string) bool {
 	default:
 		return false
 	}
+}
+
+func (p *ProxyHandler) bufferRequestBody(r *http.Request) ([]byte, error) {
+	if r.Body == nil {
+		return nil, nil
+	}
+	defer func() { _ = r.Body.Close() }()
+
+	maxBytes := p.MaxBodyBytes
+	if maxBytes <= 0 {
+		maxBytes = DefaultMaxBodyBytes
+	}
+
+	limitedReader := io.LimitReader(r.Body, maxBytes+1)
+	buf, err := io.ReadAll(limitedReader)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(buf)) > maxBytes {
+		return nil, errBodyTooLarge
+	}
+	return buf, nil
+}
+
+func (p *ProxyHandler) buildTargetURL(service, accountID, subPath, rawQuery string) string {
+	var dest string
+	if p.TargetURLBuilder != nil {
+		dest = p.TargetURLBuilder(service, accountID, subPath)
+	} else {
+		trimmed := strings.TrimPrefix(subPath, "/")
+		if trimmed != "" {
+			dest = fmt.Sprintf("https://%s.%s.workers.dev/%s", service, accountID, trimmed)
+		} else {
+			dest = fmt.Sprintf("https://%s.%s.workers.dev", service, accountID)
+		}
+	}
+
+	if rawQuery != "" {
+		if strings.Contains(dest, "?") {
+			dest += "&" + rawQuery
+		} else {
+			dest += "?" + rawQuery
+		}
+	}
+	return dest
 }

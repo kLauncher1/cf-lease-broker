@@ -774,3 +774,43 @@ func TestProxyPQCResolverIntegration(t *testing.T) {
 		t.Fatalf("expected X-CF-Broker-PQC-Latency-Us '280', got '%s'", rec.Header().Get("X-CF-Broker-PQC-Latency-Us"))
 	}
 }
+
+func TestProxyWasmDedupResolverIntegration(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"wasm_worker_response"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	handler.SetWasmDedupResolver(func(r *http.Request) (string, int, int64, int64) {
+		return "cow-active", 14, 917504, 85
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/execute", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-CF-Broker-Wasm-Dedup") != "cow-active" {
+		t.Fatalf("expected X-CF-Broker-Wasm-Dedup 'cow-active', got '%s'", rec.Header().Get("X-CF-Broker-Wasm-Dedup"))
+	}
+	if rec.Header().Get("X-CF-Broker-Wasm-Shared-Pages") != "14" {
+		t.Fatalf("expected X-CF-Broker-Wasm-Shared-Pages '14', got '%s'", rec.Header().Get("X-CF-Broker-Wasm-Shared-Pages"))
+	}
+	if rec.Header().Get("X-CF-Broker-Wasm-Saved-Bytes") != "917504" {
+		t.Fatalf("expected X-CF-Broker-Wasm-Saved-Bytes '917504', got '%s'", rec.Header().Get("X-CF-Broker-Wasm-Saved-Bytes"))
+	}
+	if rec.Header().Get("X-CF-Broker-Wasm-Resurrect-Us") != "85" {
+		t.Fatalf("expected X-CF-Broker-Wasm-Resurrect-Us '85', got '%s'", rec.Header().Get("X-CF-Broker-Wasm-Resurrect-Us"))
+	}
+}
