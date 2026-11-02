@@ -26,6 +26,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/replication"
 	"github.com/kLauncher1/cf-lease-broker/internal/rotator"
 	"github.com/kLauncher1/cf-lease-broker/internal/sandbox"
+	"github.com/kLauncher1/cf-lease-broker/internal/scrubber"
 	"github.com/kLauncher1/cf-lease-broker/internal/security"
 	"github.com/kLauncher1/cf-lease-broker/internal/steering"
 	"github.com/kLauncher1/cf-lease-broker/internal/storage"
@@ -37,7 +38,7 @@ import (
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.22.0"
+	Version = "0.23.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -365,6 +366,22 @@ func main() {
 		return status, stats.SharedPhysicalPages, stats.SavedMemoryBytes, resurrectUs
 	})
 
+	// Autonomous Multi-Tenant eBPF DDoS Scrubbing & Edge Line-Rate Mitigation
+	scrubberEngine := scrubber.NewScrubberEngine(scrubber.DefaultScrubberConfig())
+	scrubberHandler := scrubber.NewScrubberHandler(scrubberEngine)
+	scrubberEngine.Start(context.Background())
+	defer scrubberEngine.Stop()
+	proxyHandler.SetScrubberResolver(func(r *http.Request) (string, float64, int64) {
+		dec := scrubberEngine.InspectHTTPRequest(r, "default")
+		status := "clean"
+		if dec.Action == scrubber.ActionDrop {
+			status = "dropped"
+		} else if dec.Action == scrubber.ActionChallenge {
+			status = "challenged"
+		}
+		return status, dec.ReputationScore, dec.LatencyUs
+	})
+
 	serverCtx := &ServerContext{
 		poolMgr:           poolMgr,
 		leaseEng:          leaseEng,
@@ -397,6 +414,7 @@ func main() {
 		zkHandler:         zkHandler,
 		pqcHandler:        pqcHandler,
 		dedupHandler:      dedupHandler,
+		scrubberHandler:   scrubberHandler,
 		r2Gateway:         r2Gateway,
 		kvCache:           kvCache,
 		webhookDispatcher: webhookDispatcher,
@@ -417,7 +435,7 @@ func main() {
 		" 🔒 Vault/JWT · 🔄 HotReload · 🚀 Compiler · 🤝 Raft · 🛡️ mTLS · 💰 Billing\n" +
 		" 🛰️ Radar · 🔄 Rotator · ⚡ HTTP/3 eBPF · 📦 Wasm Sandbox · 🌐 Mesh · 🩺 Telemetry\n" +
 		" 🗜️ Adaptive Compression · 🌐 Geo-Replication · 🌐 Federation Mesh · 🛡️ ZK Verifier\n" +
-		" ⚛️ PQC ML-KEM/DSA · 📦 Wasm CoW Dedup (60%+ Compaction & Sub-ms Resurrection)\n" +
+		" ⚛️ PQC ML-KEM/DSA · 📦 Wasm CoW Dedup · 🛡️ eBPF DDoS Line-Rate Scrubber\n" +
 		" 💡 Standalone Single Binary with Embedded Zero-Dependency UI\n" +
 		"=================================================================\n"
 	fmt.Print(banner)

@@ -24,6 +24,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/replication"
 	"github.com/kLauncher1/cf-lease-broker/internal/rotator"
 	"github.com/kLauncher1/cf-lease-broker/internal/sandbox"
+	"github.com/kLauncher1/cf-lease-broker/internal/scrubber"
 	"github.com/kLauncher1/cf-lease-broker/internal/security"
 	"github.com/kLauncher1/cf-lease-broker/internal/steering"
 	"github.com/kLauncher1/cf-lease-broker/internal/storage"
@@ -66,6 +67,7 @@ type ServerContext struct {
 	zkHandler         *zkproof.ZKProofHandler
 	pqcHandler        *pqc.PQCHandler
 	dedupHandler      *wasmdedup.DedupHandler
+	scrubberHandler   *scrubber.ScrubberHandler
 	r2Gateway         *storage.R2Gateway
 	kvCache           *storage.KVCacheLayer
 	webhookDispatcher *storage.WebhookDispatcher
@@ -117,6 +119,7 @@ func buildMux(s *ServerContext) *http.ServeMux {
 		"/api/zkproof":     s.zkHandler,
 		"/api/pqc":         s.pqcHandler,
 		"/api/wasmdedup":   s.dedupHandler,
+		"/api/scrubber":    s.scrubberHandler,
 	} {
 		regPair(path, h)
 	}
