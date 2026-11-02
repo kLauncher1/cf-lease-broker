@@ -814,3 +814,65 @@ func TestProxyWasmDedupResolverIntegration(t *testing.T) {
 		t.Fatalf("expected X-CF-Broker-Wasm-Resurrect-Us '85', got '%s'", rec.Header().Get("X-CF-Broker-Wasm-Resurrect-Us"))
 	}
 }
+
+func TestProxyScrubberResolverIntegration(t *testing.T) {
+	backendHit := false
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backendHit = true
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"clean_traffic_response"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	// 1. Clean traffic test
+	handler.SetScrubberResolver(func(r *http.Request) (string, float64, int64) {
+		return "clean", 95.0, 12
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/endpoint", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if !backendHit {
+		t.Fatalf("expected backend to be hit for clean traffic")
+	}
+	if rec.Header().Get("X-CF-Broker-DDoS-Status") != "clean" {
+		t.Fatalf("expected X-CF-Broker-DDoS-Status 'clean', got '%s'", rec.Header().Get("X-CF-Broker-DDoS-Status"))
+	}
+	if rec.Header().Get("X-CF-Broker-DDoS-Reputation") != "95.0" {
+		t.Fatalf("expected X-CF-Broker-DDoS-Reputation '95.0', got '%s'", rec.Header().Get("X-CF-Broker-DDoS-Reputation"))
+	}
+	if rec.Header().Get("X-CF-Broker-DDoS-Latency-Us") != "12" {
+		t.Fatalf("expected X-CF-Broker-DDoS-Latency-Us '12', got '%s'", rec.Header().Get("X-CF-Broker-DDoS-Latency-Us"))
+	}
+
+	// 2. Blocked / dropped attack traffic test
+	backendHit = false
+	handler.SetScrubberResolver(func(r *http.Request) (string, float64, int64) {
+		return "dropped", 15.0, 8
+	})
+
+	reqDrop := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/attack", nil)
+	recDrop := httptest.NewRecorder()
+	handler.ServeHTTP(recDrop, reqDrop)
+
+	if recDrop.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden for dropped traffic, got %d", recDrop.Code)
+	}
+	if backendHit {
+		t.Fatalf("backend should NOT be hit for dropped DDoS traffic")
+	}
+	if recDrop.Header().Get("X-CF-Broker-DDoS-Status") != "dropped" {
+		t.Fatalf("expected X-CF-Broker-DDoS-Status 'dropped', got '%s'", recDrop.Header().Get("X-CF-Broker-DDoS-Status"))
+	}
+}

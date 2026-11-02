@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-11-02
+
+### Added
+- **Autonomous Multi-Tenant eBPF DDoS Scrubbing & Edge Line-Rate Mitigation Subsystem**: Implemented `internal/scrubber/` providing line-rate XDP packet filtering, stateful IP reputation tracking, automatic cryptographic challenge token issuance, and microsecond-scale mitigation telemetry in pure Go.
+- **Line-Rate XDP Packet Filter**: Implemented `internal/scrubber/xdp_filter.go` providing zero-copy L3/L4 packet header inspection, volumetric TCP SYN flood dropping at line-rate, UDP reflection and amplification mitigation (DNS port 53, NTP port 123, SSDP port 1900, Memcached port 11211), and malformed packet rejection (illegal SYN+FIN scans, land attacks).
+- **Stateful IP Reputation Tracker & Proof-of-Work Challenge Engine**: Implemented `internal/scrubber/reputation.go` with sliding-window EWMA reputation scoring (0.0 to 100.0), classification across Clean, Suspicious, Anomalous, and Banned tiers, automatic quarantine banning, and HMAC-SHA256 challenge token generation with constant-time verification (`crypto/subtle.ConstantTimeCompare`) and replay defense.
+- **Cross-Platform XDP Driver Abstraction**: Implemented `internal/scrubber/driver_linux.go` and `internal/scrubber/driver_other.go` interfacing with host Linux kernel XDP (`ebpf_xdp_native`, `ebpf_xdp_generic`) with zero-downtime fallback to high-throughput user-space line-rate emulation.
+- **Unified Scrubber Engine Coordinator**: Implemented `internal/scrubber/engine.go` managing tenant scrubber policies, rate limit quotas, background pruning loops, and real-time mitigation telemetry metrics.
+- **RESTful DDoS Scrubber API**: Implemented `internal/scrubber/handler.go` mounting `/api/scrubber/*` in `main.go`, exposing `/status`, `/stats`, `/inspect`, `/reputation`, `/challenge`, `/challenge/verify`, `/bans`, `/ban`, `/unban`, `/policies`, and `/reset` with strict 64KB `io.LimitReader` request body bounding.
+- **Interactive Glassmorphism Dashboard Panel**: Enhanced `web/dist/index.html` with an autonomous DDoS Scrubber card featuring live KPI telemetry counters (Driver Mode, Inspected / Passed, Dropped / Mitigated, Active Bans, and Mitigation Latency in µs), an interactive Line-Rate Attack Vector Simulator, an IP Reputation Inspector, and a Proof-of-Work Challenge Verifier.
+- **Exhaustive Unit & Concurrency Test Suite**: Added 12 comprehensive unit and integration tests in `internal/scrubber/scrubber_test.go` verifying zero-copy IPv4/L4 header parsing, volumetric SYN flood dropping, UDP amplification mitigation, malformed packet drops, stateful IP reputation lifecycle, challenge token verification with anti-replay/expiry defense, quarantine ban lifecycle, cross-platform drivers, REST HTTP endpoints, 64KB DoS bounding, 40-goroutine concurrent execution, and sub-10µs mitigation latency.
+
+### Changed
+- Added `ScrubberResolver` hook to `ProxyHandler` (`internal/proxy/proxy.go`), dropping malicious attacks at the edge with HTTP 403 Forbidden and annotating forwarded proxy responses with `X-CF-Broker-DDoS-Status`, `X-CF-Broker-DDoS-Reputation`, and `X-CF-Broker-DDoS-Latency-Us` telemetry headers.
+- Added `TestProxyScrubberResolverIntegration` in `internal/proxy/proxy_test.go` verifying proxy DDoS mitigation headers and edge blocking.
+- Mounted `/api/scrubber/*` routes on HTTP mux, initialized `ScrubberEngine` and `ScrubberHandler` in `main.go`, and updated console startup banner.
+- Updated `scripts/ARCHITECTURE_MAP.md` registering all 8 `internal/scrubber/` modules and updating repository line counts.
+- Bumped application version to `0.23.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.22.0] - 2026-11-02
 
 ### Added

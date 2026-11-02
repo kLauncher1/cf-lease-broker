@@ -44,6 +44,7 @@ type ProxyHandler struct {
 	ZKProofResolver     func(r *http.Request) (status, statement string, latencyUs int64)
 	PQCResolver         func(r *http.Request) (kemAlg, dsaAlg, hybridStatus string, latencyUs int64)
 	WasmDedupResolver   func(r *http.Request) (status string, sharedPages int, savedBytes int64, resurrectUs int64)
+	ScrubberResolver    func(r *http.Request) (status string, score float64, latencyUs int64)
 	MaxRetries          int
 	MaxBodyBytes     int64
 }
@@ -98,6 +99,27 @@ func (p *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(map[string]string{
 				"error":   "mtls_client_verification_failed",
 				"message": err.Error(),
+			})
+			return
+		}
+	}
+
+	// Autonomous DDoS Scrubbing & Line-Rate Mitigation Inspection
+	if p.ScrubberResolver != nil {
+		status, score, lat := p.ScrubberResolver(r)
+		if status == "dropped" || status == "banned" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-CF-Broker-DDoS-Status", status)
+			w.Header().Set("X-CF-Broker-DDoS-Reputation", fmt.Sprintf("%.1f", score))
+			if lat > 0 {
+				w.Header().Set("X-CF-Broker-DDoS-Latency-Us", strconv.FormatInt(lat, 10))
+			}
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":            "ddos_scrubbed",
+				"message":          "request blocked by autonomous line-rate mitigation",
+				"reputation_score": score,
+				"status":           status,
 			})
 			return
 		}
@@ -411,6 +433,16 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 		}
 	}
 
+	if p.ScrubberResolver != nil && r != nil {
+		if status, score, lat := p.ScrubberResolver(r); status != "" {
+			w.Header().Set("X-CF-Broker-DDoS-Status", status)
+			w.Header().Set("X-CF-Broker-DDoS-Reputation", fmt.Sprintf("%.1f", score))
+			if lat > 0 {
+				w.Header().Set("X-CF-Broker-DDoS-Latency-Us", strconv.FormatInt(lat, 10))
+			}
+		}
+	}
+
 	if p.TranscoderResolver != nil && r != nil {
 		rawBody, err := io.ReadAll(resp.Body)
 		if err == nil {
@@ -452,5 +484,10 @@ func (p *ProxyHandler) SetFederationResolver(fn func(r *http.Request) (clusterID
 // SetPQCResolver registers a post-quantum cryptographic resolver for proxy responses.
 func (p *ProxyHandler) SetPQCResolver(fn func(r *http.Request) (kemAlg, dsaAlg, hybridStatus string, latencyUs int64)) {
 	p.PQCResolver = fn
+}
+
+// SetScrubberResolver registers a line-rate DDoS scrubber resolver for proxy responses.
+func (p *ProxyHandler) SetScrubberResolver(fn func(r *http.Request) (status string, score float64, latencyUs int64)) {
+	p.ScrubberResolver = fn
 }
 

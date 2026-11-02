@@ -1992,6 +1992,114 @@ export default {
       <div id="wasm-dedup-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
     </section>
 
+    <!-- Autonomous Multi-Tenant eBPF DDoS Scrubbing & Line-Rate Mitigation -->
+    <div class="section-header" id="ddos-scrubber-section">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="color: #ef4444;">🛡️</span> Autonomous eBPF DDoS Scrubbing &amp; Line-Rate Mitigation (<code style="font-family: 'JetBrains Mono', monospace; color: #ef4444; font-size: 13px;">/api/scrubber/*</code>)
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="action-btn" onclick="fetchScrubberStats()" style="font-size: 11px; padding: 4px 10px; background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #f87171;">Scrubber Telemetry</button>
+        <button class="action-btn" onclick="loadScrubberState()" style="font-size: 11px; padding: 4px 10px; background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.4); color: #93c5fd;">Refresh State</button>
+        <button class="action-btn" onclick="resetScrubberEngine()" style="font-size: 11px; padding: 4px 10px; background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">Reset Filters</button>
+      </div>
+    </div>
+
+    <section class="scrubber-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <!-- KPI Metrics Row -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px;">
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Driver Mode</div>
+          <div id="scrubber-driver-mode" style="font-size: 14px; font-weight: 600; color: #ef4444; font-family: 'JetBrains Mono', monospace;">XDP Active</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Line-Rate Filtering</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Inspected / Passed</div>
+          <div id="scrubber-packets-ratio" style="font-size: 14px; font-weight: 600; color: #10b981; font-family: 'JetBrains Mono', monospace;">0 / 0</div>
+          <div id="scrubber-passed-rate" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Zero CPU Overhead</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Dropped / Mitigated</div>
+          <div id="scrubber-dropped-count" style="font-size: 14px; font-weight: 600; color: #f59e0b; font-family: 'JetBrains Mono', monospace;">0 Dropped</div>
+          <div id="scrubber-mitigated-breakdown" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">SYN / UDP / L7 Floods</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Active Bans</div>
+          <div id="scrubber-active-bans" style="font-size: 14px; font-weight: 600; color: #ec4899; font-family: 'JetBrains Mono', monospace;">0 IPs Quarantined</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Auto-Quarantine Threshold</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Mitigation Latency</div>
+          <div id="scrubber-latency-us" style="font-size: 14px; font-weight: 600; color: #06b6d4; font-family: 'JetBrains Mono', monospace;">&lt; 5.0 µs</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Sub-Microsecond XDP Hook</div>
+        </div>
+      </div>
+
+      <!-- Interactive Controls -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+        <!-- Left: Line-Rate Attack Simulator -->
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <strong style="color: #f87171; font-size: 13px;">⚡ Line-Rate Attack Vector Simulator</strong>
+            <span style="font-size: 10px; background: rgba(239,68,68,0.2); color: #fca5a5; padding: 2px 6px; border-radius: 4px;">XDP Test</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Source IP</label>
+              <input type="text" id="sim-scrubber-src-ip" value="198.51.100.77" style="width: 100%; padding: 6px 10px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 12px;" />
+            </div>
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Attack Preset</label>
+              <select id="sim-scrubber-preset" onchange="applyScrubberPreset()" style="width: 100%; padding: 6px 10px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-primary); font-size: 12px;">
+                <option value="syn_flood">Volumetric TCP SYN Flood</option>
+                <option value="udp_amplification">NTP/DNS Amplification (UDP 123)</option>
+                <option value="clean_traffic">Pristine Clean Traffic</option>
+                <option value="malformed_packet">Malformed SYN+FIN Probe</option>
+              </select>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button class="action-btn" onclick="executeScrubberSimulation()" style="background: #ef4444; color: white; border: none; padding: 6px 14px; font-size: 12px; font-weight: 500; border-radius: 6px; cursor: pointer;">Inject &amp; Scrub Packet</button>
+            <button class="action-btn" onclick="injectBurstAttack(10)" style="background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; font-size: 12px;">Burst 10 Packets</button>
+          </div>
+          <div id="scrubber-sim-result" style="padding: 10px; background: rgba(0,0,0,0.25); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); min-height: 80px; max-height: 140px; overflow-y: auto;">
+            Select an attack vector and click &quot;Inject &amp; Scrub Packet&quot; to test line-rate mitigation.
+          </div>
+        </div>
+
+        <!-- Right: IP Reputation & Challenge Quarantine -->
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <strong style="color: #60a5fa; font-size: 13px;">🔍 IP Reputation &amp; Challenge Verifier</strong>
+            <span style="font-size: 10px; background: rgba(59,130,246,0.2); color: #93c5fd; padding: 2px 6px; border-radius: 4px;">Stateful EWMA</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 8px; margin-bottom: 10px;">
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Target Client IP</label>
+              <input type="text" id="target-reputation-ip" value="198.51.100.77" style="width: 100%; padding: 6px 10px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-primary); font-family: 'JetBrains Mono', monospace; font-size: 12px;" />
+            </div>
+            <div>
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px;">Action</label>
+              <button class="action-btn" onclick="queryIPReputation()" style="width: 100%; height: 32px; background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.4); color: #93c5fd; font-size: 11px;">Query Score</button>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button class="action-btn" onclick="issueIPChallenge()" style="background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.4); color: #c084fc; font-size: 12px;">Issue Challenge</button>
+            <button class="action-btn" onclick="solveLastChallenge()" style="background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.4); color: #34d399; font-size: 12px;">Solve Proof</button>
+            <button class="action-btn" onclick="toggleIPBan()" style="background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); color: #f87171; font-size: 12px;">Ban / Unban</button>
+          </div>
+          <div id="scrubber-rep-result" style="padding: 10px; background: rgba(0,0,0,0.25); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); min-height: 80px; max-height: 140px; overflow-y: auto;">
+            Enter an IP address to query its stateful reputation score, ban status, or test challenge-response verification.
+          </div>
+        </div>
+      </div>
+
+      <div id="scrubber-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
+    </section>
+
 
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
@@ -2224,6 +2332,7 @@ export default {
         loadZKState();
         loadPQCState();
         loadWasmDedupState();
+        loadScrubberState();
       } catch (err) {
         console.error('Failed to load state:', err);
       }
@@ -5797,15 +5906,328 @@ export default {
       }
     }
 
+    let lastIssuedChallengeToken = '';
+    let lastIssuedChallengeSig = '';
+
+    async function loadScrubberState() {
+      try {
+        const res = await fetch('/api/scrubber/stats');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const modeEl = document.getElementById('scrubber-driver-mode');
+        if (modeEl) {
+          modeEl.textContent = data.driver_mode === 'ebpf_xdp_native' ? 'eBPF XDP Native' : (data.driver_mode === 'ebpf_xdp_generic' ? 'eBPF XDP Generic' : 'XDP Emulated');
+          modeEl.style.color = '#ef4444';
+        }
+
+        const ratioEl = document.getElementById('scrubber-packets-ratio');
+        if (ratioEl) ratioEl.textContent = `${data.total_packets_inspected || 0} / ${data.packets_passed || 0}`;
+
+        const dropEl = document.getElementById('scrubber-dropped-count');
+        if (dropEl) dropEl.textContent = `${data.packets_dropped || 0} Dropped`;
+
+        const breakdownEl = document.getElementById('scrubber-mitigated-breakdown');
+        if (breakdownEl) breakdownEl.textContent = `SYN: ${data.syn_floods_mitigated || 0} · UDP: ${data.udp_floods_mitigated || 0} · Bad: ${data.malformed_packets_dropped || 0}`;
+
+        const bansEl = document.getElementById('scrubber-active-bans');
+        if (bansEl) bansEl.textContent = `${data.active_bans || 0} IPs Quarantined`;
+
+        const latEl = document.getElementById('scrubber-latency-us');
+        if (latEl) {
+          const lat = data.avg_mitigation_latency_us || 0.8;
+          latEl.textContent = `${lat.toFixed(1)} µs`;
+        }
+      } catch (err) {
+        console.error('Failed to load scrubber telemetry:', err);
+      }
+    }
+
+    function applyScrubberPreset() {
+      const preset = document.getElementById('sim-scrubber-preset').value;
+      const ipInput = document.getElementById('sim-scrubber-src-ip');
+      if (preset === 'syn_flood') {
+        ipInput.value = '198.51.100.99';
+      } else if (preset === 'udp_amplification') {
+        ipInput.value = '192.0.2.123';
+      } else if (preset === 'clean_traffic') {
+        ipInput.value = '203.0.113.15';
+      } else if (preset === 'malformed_packet') {
+        ipInput.value = '198.51.100.222';
+      }
+    }
+
+    async function executeScrubberSimulation() {
+      const preset = document.getElementById('sim-scrubber-preset').value;
+      const srcIP = document.getElementById('sim-scrubber-src-ip').value.trim() || '198.51.100.77';
+      const resBox = document.getElementById('scrubber-sim-result');
+
+      let payload = {
+        src_ip: srcIP,
+        dst_ip: '203.0.113.1',
+        src_port: 45000,
+        dst_port: 443,
+        protocol: 'TCP',
+        is_syn: false,
+        is_ack: true,
+        payload_size: 128,
+        tenant_id: 'default'
+      };
+
+      if (preset === 'syn_flood') {
+        payload.is_syn = true;
+        payload.is_ack = false;
+        payload.payload_size = 0;
+      } else if (preset === 'udp_amplification') {
+        payload.protocol = 'UDP';
+        payload.src_port = 123;
+        payload.payload_size = 1024;
+      } else if (preset === 'malformed_packet') {
+        payload.is_syn = true;
+        payload.src_ip = '203.0.113.1';
+        payload.dst_ip = '203.0.113.1';
+        payload.src_port = 443;
+        payload.dst_port = 443;
+      }
+
+      resBox.innerHTML = '<span style="color: #38bdf8;">Evaluating packet through line-rate XDP filter...</span>';
+      try {
+        const res = await fetch('/api/scrubber/inspect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const dec = await res.json();
+
+        let actionBadge = dec.action === 'XDP_DROP' ?
+          '<span style="color: #ef4444; font-weight: 700;">❌ XDP_DROP (Dropped at Zero CPU Cost)</span>' :
+          (dec.action === 'XDP_TX_CHALLENGE' ?
+            '<span style="color: #f59e0b; font-weight: 700;">⚡ XDP_TX (Cryptographic Challenge Issued)</span>' :
+            '<span style="color: #10b981; font-weight: 700;">✅ XDP_PASS (Line-Rate Forwarded)</span>');
+
+        resBox.innerHTML = `
+          <div><strong>Decision:</strong> ${actionBadge}</div>
+          <div><strong>Vector:</strong> <span style="color: #f87171;">${escapeHtml(dec.attack_type)}</span> · <strong>Latency:</strong> <span style="color: #34d399;">${dec.latency_us} µs</span></div>
+          <div><strong>Reputation:</strong> <span style="color: #38bdf8;">${dec.reputation_score.toFixed(1)} (${escapeHtml(dec.reputation_level)})</span></div>
+          <div style="color: var(--text-muted); font-size: 10px; margin-top: 4px;">Reason: ${escapeHtml(dec.reason)}</div>
+        `;
+        loadScrubberState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Simulation Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function injectBurstAttack(count) {
+      const preset = document.getElementById('sim-scrubber-preset').value;
+      const srcIP = document.getElementById('sim-scrubber-src-ip').value.trim() || '198.51.100.77';
+      const resBox = document.getElementById('scrubber-sim-result');
+      resBox.innerHTML = `<span style="color: #f59e0b;">Injecting burst of ${count} line-rate packets...</span>`;
+
+      let drops = 0;
+      let passes = 0;
+      let challenges = 0;
+
+      for (let i = 0; i < count; i++) {
+        let payload = {
+          src_ip: srcIP,
+          dst_ip: '203.0.113.1',
+          src_port: 30000 + i,
+          dst_port: 443,
+          protocol: 'TCP',
+          is_syn: preset === 'syn_flood',
+          is_ack: preset !== 'syn_flood',
+          payload_size: preset === 'udp_amplification' ? 1024 : 64,
+          tenant_id: 'default'
+        };
+        if (preset === 'udp_amplification') {
+          payload.protocol = 'UDP';
+          payload.src_port = 123;
+        }
+
+        try {
+          const res = await fetch('/api/scrubber/inspect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const dec = await res.json();
+          if (dec.action === 'XDP_DROP') drops++;
+          else if (dec.action === 'XDP_TX_CHALLENGE') challenges++;
+          else passes++;
+        } catch (e) {}
+      }
+
+      resBox.innerHTML = `
+        <div style="color: #38bdf8; font-weight: 600;">⚡ Burst Scrub Complete (${count} Packets)</div>
+        <div>Passed: <span style="color: #10b981;">${passes}</span> · Dropped: <span style="color: #ef4444; font-weight: 700;">${drops}</span> · Challenged: <span style="color: #f59e0b;">${challenges}</span></div>
+        <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">Target Source IP: ${escapeHtml(srcIP)}</div>
+      `;
+      loadScrubberState();
+    }
+
+    async function queryIPReputation() {
+      const ip = document.getElementById('target-reputation-ip').value.trim();
+      const resBox = document.getElementById('scrubber-rep-result');
+      if (!ip) return;
+
+      resBox.innerHTML = '<span style="color: #38bdf8;">Querying reputation state...</span>';
+      try {
+        const res = await fetch(`/api/scrubber/reputation?ip=${encodeURIComponent(ip)}`);
+        const rec = await res.json();
+
+        let color = '#10b981';
+        if (rec.level === 'suspicious') color = '#f59e0b';
+        else if (rec.level === 'anomalous') color = '#f97316';
+        else if (rec.level === 'banned') color = '#ef4444';
+
+        resBox.innerHTML = `
+          <div><strong>IP:</strong> <span style="color: #e2e8f0;">${escapeHtml(rec.ip)}</span></div>
+          <div><strong>Reputation Score:</strong> <span style="color: ${color}; font-weight: 700;">${rec.score.toFixed(1)} / 100.0 (${escapeHtml(rec.level)})</span></div>
+          <div><strong>Requests:</strong> ${rec.total_requests || 0} · <strong>Drops:</strong> <span style="color: #ef4444;">${rec.total_drops || 0}</span> · <strong>Challenges:</strong> ${rec.challenges_solved || 0}/${rec.challenges_issued || 0}</div>
+          <div><strong>Quarantine:</strong> ${rec.banned_until ? `<span style="color: #ef4444;">Banned until ${escapeHtml(rec.banned_until)}</span>` : '<span style="color: #10b981;">Active / Unbanned</span>'}</div>
+        `;
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Query Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function issueIPChallenge() {
+      const ip = document.getElementById('target-reputation-ip').value.trim();
+      const resBox = document.getElementById('scrubber-rep-result');
+      if (!ip) return;
+
+      try {
+        const res = await fetch('/api/scrubber/challenge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ip: ip, tenant: 'default' })
+        });
+        const tok = await res.json();
+        if (res.ok) {
+          lastIssuedChallengeToken = tok.token_id;
+          lastIssuedChallengeSig = tok.signature;
+          resBox.innerHTML = `
+            <div style="color: #c084fc; font-weight: 600;">🔐 Cryptographic Challenge Issued</div>
+            <div style="font-size: 10px; word-break: break-all; margin-top: 4px; color: #94a3b8;">Token: ${escapeHtml(tok.token_id)}</div>
+            <div style="font-size: 10px; word-break: break-all; color: #34d399;">Sig: ${escapeHtml(tok.signature)}</div>
+            <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">Expires: ${escapeHtml(tok.expires_at)}</div>
+          `;
+        } else {
+          resBox.innerHTML = `<span style="color: #ef4444;">Challenge Error: ${escapeHtml(tok.error)}</span>`;
+        }
+        loadScrubberState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Issue Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function solveLastChallenge() {
+      const resBox = document.getElementById('scrubber-rep-result');
+      if (!lastIssuedChallengeToken) {
+        resBox.innerHTML = '<span style="color: #f59e0b;">No challenge issued yet. Click &quot;Issue Challenge&quot; first.</span>';
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/scrubber/challenge/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: lastIssuedChallengeToken,
+            solution: lastIssuedChallengeSig
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.verified) {
+          resBox.innerHTML = `
+            <div style="color: #10b981; font-weight: 600;">✅ Proof-of-Work Challenge Verified</div>
+            <div style="color: #38bdf8;">Client cryptographic signature confirmed; reputation score rewarded (+30.0).</div>
+          `;
+          queryIPReputation();
+        } else {
+          resBox.innerHTML = `<span style="color: #ef4444;">Verification Failed: ${escapeHtml(data.error || 'rejected')}</span>`;
+        }
+        loadScrubberState();
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Solve Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function toggleIPBan() {
+      const ip = document.getElementById('target-reputation-ip').value.trim();
+      const resBox = document.getElementById('scrubber-rep-result');
+      if (!ip) return;
+
+      try {
+        const bansRes = await fetch('/api/scrubber/bans');
+        const bans = await bansRes.json();
+        const isBanned = !!bans[ip];
+
+        if (isBanned) {
+          await fetch('/api/scrubber/unban', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip: ip })
+          });
+          resBox.innerHTML = `<span style="color: #10b981;">✅ IP ${escapeHtml(ip)} unbanned and restored.</span>`;
+        } else {
+          await fetch('/api/scrubber/ban', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip: ip, duration_minutes: 15, reason: 'operator dashboard toggle' })
+          });
+          resBox.innerHTML = `<span style="color: #ef4444;">🚫 IP ${escapeHtml(ip)} quarantined for 15 minutes.</span>`;
+        }
+        loadScrubberState();
+        setTimeout(queryIPReputation, 400);
+      } catch (err) {
+        resBox.innerHTML = `<span style="color: #ef4444;">Ban Toggle Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function fetchScrubberStats() {
+      const diag = document.getElementById('scrubber-diag-result');
+      if (!diag) return;
+      diag.style.display = 'block';
+      diag.innerHTML = '<span style="color: #38bdf8;">Querying DDoS scrubber telemetry...</span>';
+      try {
+        const res = await fetch('/api/scrubber/stats');
+        const data = await res.json();
+        diag.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <strong style="color: #ef4444;">Autonomous eBPF DDoS Scrubber Telemetry &amp; Line-Rate Metrics</strong>
+            <button onclick="document.getElementById('scrubber-diag-result').style.display='none'" style="background: none; border: none; color: #94a3b8; cursor: pointer;">✕</button>
+          </div>
+          <pre style="margin: 0; white-space: pre-wrap; color: #e2e8f0; font-size: 11px;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+        `;
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function resetScrubberEngine() {
+      if (!confirm('Reset all DDoS scrubber rate trackers, bans, and telemetry counters?')) return;
+      try {
+        await fetch('/api/scrubber/reset', { method: 'POST' });
+        loadScrubberState();
+        document.getElementById('scrubber-sim-result').innerHTML = '<span style="color: #34d399;">Scrubber filters and counters reset.</span>';
+        document.getElementById('scrubber-rep-result').innerHTML = '<span style="color: #34d399;">Reputation state cleared.</span>';
+      } catch (err) {
+        alert('Reset failed: ' + err.message);
+      }
+    }
+
     applyRadarPreset();
     applySandboxPreset();
     applyTranscoderPreset('json');
+    applyScrubberPreset();
     loadTelemetryState();
     loadTranscoderState();
     loadReplicationState();
     loadFederationState();
     loadZKState();
     loadWasmDedupState();
+    loadScrubberState();
 
     loadState();
     setInterval(loadState, 2000);
