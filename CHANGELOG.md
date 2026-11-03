@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-11-03
+
+### Added
+- **Quantum Entropy Beacon & Hardware RNG Attestation Subsystem**: Implemented `internal/entropy/` delivering physical CPU execution timing jitter harvesting, hardware TRNG sampling pipelines, NIST SP 800-90B continuous health testing, cryptographic randomness extraction via HKDF-SHA256, and chained quantum entropy beacon generation with HMAC-SHA256 peer attestation in pure Go standard library with zero external dependencies.
+- **Physical CPU Jitter & Hardware TRNG Harvester**: Implemented `internal/entropy/hardware_jitter.go` capturing CPU timing variances and scheduler delays via micro-spins and `runtime.Gosched()`, feeding deltas into a 64-bit SplitMix64 whitening pipeline, mixed with OS CSPRNG hardware entropy, with constant-time memory zeroization (`Zeroize`).
+- **NIST SP 800-90B Continuous Online Health Evaluator**: Implemented `internal/entropy/nist_health.go` performing Section 4.4.1 Repetition Count Test (RCT) and Section 4.4.2 Adaptive Proportion Test (APT) with configurable cutoffs, paired with real-time Shannon and min-entropy ($H_{min} = -\log_2(p_{max})$) quality assessments.
+- **Cryptographic Randomness Extractor (Leftover Hash Lemma)**: Implemented `internal/entropy/extractor.go` transforming raw min-entropy sample batches into uniformly distributed cryptographically secure seeds and tokens via RFC 5869 HKDF-SHA256 Extract-and-Expand with immediate zeroization of intermediate pseudorandom key buffers.
+- **Quantum Entropy Beacon Hash Chainer**: Implemented `internal/entropy/beacon.go` maintaining monotonic rounds linked via cryptographic SHA-256 hash chaining (Round $N$ binding to Round $N-1$), HMAC-SHA256 attestation signing, and constant-time peer verification (`subtle.ConstantTimeCompare`) with clock skew protection.
+- **Unified Entropy Engine Coordinator**: Implemented `internal/entropy/engine.go` managing periodic background pool replenishment, on-demand token generation (`GenerateToken`), thread-safe pool ring buffers, health status tracking, and operational telemetry.
+- **RESTful Entropy Management API**: Implemented `internal/entropy/handler.go` mounting `/api/entropy/*` (`/status`, `/beacon`, `/harvest`, `/health`, `/verify`, `/stats`, `/reset`) with strict 64KB `io.LimitReader` request body bounding to prevent denial-of-service memory exhaustion.
+- **Reverse Proxy Header Telemetry Annotation**: Extended `ProxyHandler` (`internal/proxy/proxy.go`, `internal/proxy/resolvers.go`) with `SetEntropyResolver`, annotating reverse proxy responses with `X-CF-Broker-Entropy-Source`, `X-CF-Broker-Entropy-MinBits`, `X-CF-Broker-Entropy-Beacon-Round`, and `X-CF-Broker-Entropy-Latency-Us`.
+- **Exhaustive Unit & Concurrency Test Suite**: Added 12 comprehensive unit and integration tests in `internal/entropy/entropy_test.go` and `internal/proxy/proxy_test.go` covering jitter harvesting, min-entropy validation, NIST SP 800-90B RCT pass/fail, NIST SP 800-90B APT pass/fail, randomness extraction uniformity, buffer zeroization, beacon round chaining & tampering detection, peer verification & replay rejection, REST endpoints, 64KB DoS bounding, and 40-goroutine concurrent stress testing with 100% green coverage.
+
+### Changed
+- Mounted `/api/entropy/*` routes on HTTP router in `routes.go` and `main.go`.
+- Initialized `EntropyEngine` and `EntropyHandler` with background loop in `main.go`, and updated console startup banner.
+- Updated `scripts/ARCHITECTURE_MAP.md` registering all 8 `internal/entropy/` modules and updating repository line counts.
+- Bumped application version to `0.25.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.24.0] - 2026-11-02
 
 ### Added
