@@ -916,3 +916,42 @@ func TestProxyEnclaveResolverIntegration(t *testing.T) {
 	}
 }
 
+func TestProxyEntropyResolverIntegration(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"entropy_protected_response"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	handler.SetEntropyResolver(func(r *http.Request) (string, float64, uint64, int64) {
+		return "hybrid-quantum-jitter", 7.96, 42, 18
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/entropy-endpoint", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-CF-Broker-Entropy-Source") != "hybrid-quantum-jitter" {
+		t.Fatalf("expected X-CF-Broker-Entropy-Source 'hybrid-quantum-jitter', got '%s'", rec.Header().Get("X-CF-Broker-Entropy-Source"))
+	}
+	if rec.Header().Get("X-CF-Broker-Entropy-MinBits") != "7.96" {
+		t.Fatalf("expected X-CF-Broker-Entropy-MinBits '7.96', got '%s'", rec.Header().Get("X-CF-Broker-Entropy-MinBits"))
+	}
+	if rec.Header().Get("X-CF-Broker-Entropy-Beacon-Round") != "42" {
+		t.Fatalf("expected X-CF-Broker-Entropy-Beacon-Round '42', got '%s'", rec.Header().Get("X-CF-Broker-Entropy-Beacon-Round"))
+	}
+	if rec.Header().Get("X-CF-Broker-Entropy-Latency-Us") != "18" {
+		t.Fatalf("expected X-CF-Broker-Entropy-Latency-Us '18', got '%s'", rec.Header().Get("X-CF-Broker-Entropy-Latency-Us"))
+	}
+}
+

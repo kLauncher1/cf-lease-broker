@@ -78,3 +78,9 @@ func (p *ProxyHandler) SetScrubberResolver(fn func(r *http.Request) (status stri
 func (p *ProxyHandler) SetEnclaveResolver(fn func(r *http.Request) (enclaveType, status, quoteID string, latencyUs int64)) {
 	p.EnclaveResolver = fn
 }
+
+// SetEntropyResolver registers a quantum entropy beacon and hardware RNG resolver for proxy responses.
+func (p *ProxyHandler) SetEntropyResolver(fn func(r *http.Request) (source string, minBits float64, beaconRound uint64, latencyUs int64)) {
+	p.EntropyResolver = fn
+}
+

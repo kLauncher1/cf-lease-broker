@@ -2206,6 +2206,96 @@ export default {
       <div id="enclave-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
     </section>
 
+    <!-- Quantum Entropy Beacon & Hardware RNG Attestation -->
+    <div class="section-header" id="entropy-section">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="color: #06b6d4;">⚛️</span> Quantum Entropy Beacon &amp; Hardware RNG Attestation (<code style="font-family: 'JetBrains Mono', monospace; color: #06b6d4; font-size: 13px;">/api/entropy/*</code>)
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="action-btn" onclick="fetchEntropyStats()" style="font-size: 11px; padding: 4px 10px; background: rgba(6, 182, 212, 0.15); border-color: rgba(6, 182, 212, 0.3); color: #22d3ee;">Entropy Telemetry</button>
+        <button class="action-btn" onclick="loadEntropyState()" style="font-size: 11px; padding: 4px 10px; background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.4); color: #93c5fd;">Refresh State</button>
+        <button class="action-btn" onclick="resetEntropyEngine()" style="font-size: 11px; padding: 4px 10px; background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">Reset Beacon</button>
+      </div>
+    </div>
+
+    <section class="entropy-panel" style="background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 20px; margin-bottom: 32px;">
+      <!-- KPI Metrics Row -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px;">
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Entropy Source</div>
+          <div id="entropy-source-status" style="font-size: 14px; font-weight: 600; color: #06b6d4; font-family: 'JetBrains Mono', monospace;">TRNG / Jitter</div>
+          <div id="entropy-source-desc" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">SplitMix64 Mixed</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Pool Min-Entropy</div>
+          <div id="entropy-pool-bits" style="font-size: 14px; font-weight: 600; color: #10b981; font-family: 'JetBrains Mono', monospace;">0.98 bits/bit</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">NIST SP 800-90B Evaluated</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Beacon Round</div>
+          <div id="entropy-beacon-round" style="font-size: 14px; font-weight: 600; color: #a78bfa; font-family: 'JetBrains Mono', monospace;">Round #0</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Monotonic Hash Chain</div>
+        </div>
+
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px;">Health &amp; Latency</div>
+          <div id="entropy-health-kpi" style="font-size: 14px; font-weight: 600; color: #fbbf24; font-family: 'JetBrains Mono', monospace;">100% Pass · 25µs</div>
+          <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">RCT &amp; APT Online Health</div>
+        </div>
+      </div>
+
+      <!-- Controls & Interactive Sandboxes Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px;">
+        <!-- Left: Quantum Entropy Beacon Chainer & Attestation Verifier -->
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px;">
+          <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; color: var(--text-main); display: flex; align-items: center; justify-content: space-between;">
+            <span>Quantum Entropy Beacon Verifier</span>
+            <span style="font-size: 10px; padding: 2px 6px; background: rgba(6, 182, 212, 0.15); color: #22d3ee; border-radius: 4px;">HMAC-SHA256 Chain</span>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button class="action-btn" onclick="fetchLatestBeacon()" style="background: rgba(6, 182, 212, 0.2); border-color: rgba(6, 182, 212, 0.4); color: #22d3ee; font-size: 12px;">Get Latest Beacon</button>
+            <button class="action-btn" onclick="verifyCurrentBeacon()" style="background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.4); color: #34d399; font-size: 12px;">Verify Beacon Attestation</button>
+          </div>
+
+          <div id="entropy-beacon-result" style="padding: 10px; background: rgba(0,0,0,0.25); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); min-height: 80px; max-height: 140px; overflow-y: auto;">
+            Fetch the latest beacon round to inspect SHA-256 hash chaining, epoch timestamp, and HMAC-SHA256 attestation signature.
+          </div>
+        </div>
+
+        <!-- Right: NIST SP 800-90B Health Runner & Token Generator -->
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px;">
+          <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; color: var(--text-main); display: flex; align-items: center; justify-content: space-between;">
+            <span>NIST Health Diagnostic &amp; Token Generator</span>
+            <span style="font-size: 10px; padding: 2px 6px; background: rgba(251, 191, 36, 0.15); color: #fbbf24; border-radius: 4px;">RCT / APT / HKDF</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 8px; margin-bottom: 10px;">
+            <div>
+              <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Token Byte Length</label>
+              <input type="number" id="entropy-token-length" value="32" min="16" max="256" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-main); padding: 6px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Action</label>
+              <button class="action-btn" onclick="generateEntropyToken()" style="width: 100%; box-sizing: border-box; background: rgba(251, 191, 36, 0.2); border-color: rgba(251, 191, 36, 0.4); color: #fbbf24; font-size: 12px; padding: 6px 8px;">Harvest Token</button>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button class="action-btn" onclick="runNISTHealthDiagnostics()" style="background: rgba(168, 85, 247, 0.2); border-color: rgba(168, 85, 247, 0.4); color: #c084fc; font-size: 12px;">Run NIST Diagnostics</button>
+          </div>
+
+          <div id="entropy-token-result" style="padding: 10px; background: rgba(0,0,0,0.25); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); min-height: 80px; max-height: 140px; overflow-y: auto;">
+            Condition raw quantum/jitter entropy through HKDF-SHA256 randomness extractor or run NIST SP 800-90B RCT/APT health checks.
+          </div>
+        </div>
+      </div>
+
+      <div id="entropy-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
+    </section>
+
 
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
@@ -6539,6 +6629,182 @@ export default {
       }
     }
 
+    let lastFetchedBeacon = null;
+
+    async function loadEntropyState() {
+      try {
+        const [statusRes, statsRes] = await Promise.all([
+          fetch('/api/entropy/status').then(r => r.json()).catch(() => null),
+          fetch('/api/entropy/stats').then(r => r.json()).catch(() => null)
+        ]);
+
+        if (statusRes) {
+          const srcEl = document.getElementById('entropy-source-status');
+          if (srcEl) {
+            srcEl.textContent = `${statusRes.active_source.toUpperCase()} / ${statusRes.status.toUpperCase()}`;
+          }
+          const descEl = document.getElementById('entropy-source-desc');
+          if (descEl) {
+            descEl.textContent = statusRes.driver_available ? 'Hardware TRNG + Jitter' : 'CSPRNG + Timing Jitter';
+          }
+        }
+
+        if (statsRes) {
+          const poolEl = document.getElementById('entropy-pool-bits');
+          if (poolEl) {
+            poolEl.textContent = `${statsRes.min_entropy_estimate.toFixed(2)} b/sym (${statsRes.pool_bits} bits)`;
+          }
+          const rEl = document.getElementById('entropy-beacon-round');
+          if (rEl) {
+            rEl.textContent = `Round #${statsRes.latest_round}`;
+          }
+          const hEl = document.getElementById('entropy-health-kpi');
+          if (hEl) {
+            hEl.textContent = `${(statsRes.health_pass_rate * 100).toFixed(0)}% Pass · ${Math.round(statsRes.avg_harvest_latency_us)}µs`;
+          }
+        }
+      } catch (e) {}
+    }
+
+    async function fetchEntropyStats() {
+      const diag = document.getElementById('entropy-diag-result');
+      if (!diag) return;
+      diag.style.display = 'block';
+      diag.innerHTML = '<span style="color: #06b6d4;">Querying Quantum Entropy telemetry...</span>';
+      try {
+        const res = await fetch('/api/entropy/stats');
+        const data = await res.json();
+        diag.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <strong style="color: #06b6d4;">Quantum Entropy Beacon &amp; Hardware RNG Telemetry</strong>
+            <button onclick="document.getElementById('entropy-diag-result').style.display='none'" style="background: none; border: none; color: #94a3b8; cursor: pointer;">✕</button>
+          </div>
+          <pre style="margin: 0; white-space: pre-wrap; color: #e2e8f0; font-size: 11px;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+        `;
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function fetchLatestBeacon() {
+      const resEl = document.getElementById('entropy-beacon-result');
+      if (resEl) resEl.innerHTML = '<span style="color: #06b6d4;">Fetching latest beacon round...</span>';
+      try {
+        const res = await fetch('/api/entropy/beacon');
+        const beacon = await res.json();
+        lastFetchedBeacon = beacon;
+        if (resEl) {
+          resEl.innerHTML = `
+            <div style="color: #22d3ee; font-weight: 600; margin-bottom: 4px;">Beacon Round #${beacon.round} (Status: ${escapeHtml(beacon.health_status)})</div>
+            <div style="font-size: 10px; color: #94a3b8;"><strong>Entropy Digest:</strong> ${escapeHtml(beacon.entropy_digest.substring(0, 32))}...</div>
+            <div style="font-size: 10px; color: #94a3b8;"><strong>Previous Hash:</strong> ${escapeHtml(beacon.previous_hash.substring(0, 32))}...</div>
+            <div style="font-size: 10px; color: #94a3b8;"><strong>Attestation Sig:</strong> ${escapeHtml(beacon.signature.substring(0, 32))}...</div>
+            <div style="font-size: 10px; color: #cbd5e1; margin-top: 2px;">Min-Entropy: ${beacon.min_entropy.toFixed(2)} b/bit · Node: ${escapeHtml(beacon.node_id)}</div>
+          `;
+        }
+        loadEntropyState();
+      } catch (err) {
+        if (resEl) resEl.innerHTML = `<span style="color: #ef4444;">Fetch beacon failed: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function verifyCurrentBeacon() {
+      const resEl = document.getElementById('entropy-beacon-result');
+      if (!lastFetchedBeacon) {
+        if (resEl) resEl.innerHTML = '<span style="color: #fbbf24;">Please fetch latest beacon first.</span>';
+        return;
+      }
+      if (resEl) resEl.innerHTML = '<span style="color: #06b6d4;">Cryptographically verifying beacon attestation...</span>';
+      try {
+        const res = await fetch('/api/entropy/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ beacon: lastFetchedBeacon })
+        });
+        const result = await res.json();
+        if (resEl) {
+          if (result.valid) {
+            resEl.innerHTML = `
+              <div style="color: #34d399; font-weight: 600;">✅ Beacon Attestation Verified Successfully</div>
+              <div style="color: #cbd5e1; font-size: 11px; margin-top: 4px;">${escapeHtml(result.reason)}</div>
+              <div style="color: #94a3b8; font-size: 10px; margin-top: 2px;">Round #${lastFetchedBeacon.round} signature authenticated via cluster master key.</div>
+            `;
+          } else {
+            resEl.innerHTML = `
+              <div style="color: #ef4444; font-weight: 600;">❌ Beacon Attestation Rejected</div>
+              <div style="color: #fca5a5; font-size: 11px;">${escapeHtml(result.reason)}</div>
+            `;
+          }
+        }
+        loadEntropyState();
+      } catch (err) {
+        if (resEl) resEl.innerHTML = `<span style="color: #ef4444;">Verification failed: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function generateEntropyToken() {
+      const bytes = parseInt(document.getElementById('entropy-token-length')?.value || '32', 10);
+      const resEl = document.getElementById('entropy-token-result');
+      if (resEl) resEl.innerHTML = '<span style="color: #fbbf24;">Harvesting and conditioning full-entropy token...</span>';
+      try {
+        const res = await fetch('/api/entropy/harvest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bytes: bytes })
+        });
+        const data = await res.json();
+        if (resEl) {
+          resEl.innerHTML = `
+            <div style="color: #34d399; font-weight: 600; margin-bottom: 4px;">Token Harvested (${data.bytes_harvested} bytes)</div>
+            <div style="word-break: break-all; font-size: 10px; color: #fbbf24; font-family: 'JetBrains Mono', monospace;">${escapeHtml(data.token_hex)}</div>
+            <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">Source: ${escapeHtml(data.source)} · Latency: ${data.latency_us}µs · Conditioned via HKDF-SHA256</div>
+          `;
+        }
+        loadEntropyState();
+      } catch (err) {
+        if (resEl) resEl.innerHTML = `<span style="color: #ef4444;">Token harvest failed: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function runNISTHealthDiagnostics() {
+      const resEl = document.getElementById('entropy-token-result');
+      if (resEl) resEl.innerHTML = '<span style="color: #c084fc;">Running NIST SP 800-90B RCT &amp; APT health checks...</span>';
+      try {
+        const res = await fetch('/api/entropy/health', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        const report = await res.json();
+        if (resEl) {
+          const pass = report.status === 'optimal' || report.status === 'pass';
+          resEl.innerHTML = `
+            <div style="color: ${pass ? '#34d399' : '#ef4444'}; font-weight: 600; margin-bottom: 4px;">
+              ${pass ? '✅ NIST SP 800-90B Checks Passed' : '⚠️ NIST SP 800-90B Health Warning'}
+            </div>
+            <div style="font-size: 11px; color: #cbd5e1;">RCT (Repetition Count): ${report.rct_passed ? 'PASS' : 'FAIL'} (Consecutive: ${report.rct_consecutive}/${report.rct_cutoff})</div>
+            <div style="font-size: 11px; color: #cbd5e1;">APT (Adaptive Proportion): ${report.apt_passed ? 'PASS' : 'FAIL'} (Max Count: ${report.apt_max_count}/${report.apt_cutoff})</div>
+            <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">Min-Entropy: ${report.min_entropy_estimate.toFixed(3)} b/sym · Shannon: ${report.shannon_entropy.toFixed(3)} b/sym</div>
+          `;
+        }
+        loadEntropyState();
+      } catch (err) {
+        if (resEl) resEl.innerHTML = `<span style="color: #ef4444;">NIST diagnostics failed: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function resetEntropyEngine() {
+      if (!confirm('Reset Quantum Entropy Beacon and clear metrics?')) return;
+      try {
+        await fetch('/api/entropy/reset', { method: 'POST' });
+        loadEntropyState();
+        document.getElementById('entropy-beacon-result').innerHTML = '<span style="color: #34d399;">Beacon state reset.</span>';
+        document.getElementById('entropy-token-result').innerHTML = '<span style="color: #34d399;">Entropy state reset.</span>';
+      } catch (err) {
+        alert('Reset failed: ' + err.message);
+      }
+    }
+
     applyRadarPreset();
     applySandboxPreset();
     applyTranscoderPreset('json');
@@ -6551,6 +6817,7 @@ export default {
     loadWasmDedupState();
     loadScrubberState();
     loadEnclaveState();
+    loadEntropyState();
 
     loadState();
     setInterval(loadState, 2000);

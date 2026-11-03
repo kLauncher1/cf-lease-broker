@@ -46,6 +46,7 @@ type ProxyHandler struct {
 	WasmDedupResolver   func(r *http.Request) (status string, sharedPages int, savedBytes int64, resurrectUs int64)
 	ScrubberResolver    func(r *http.Request) (status string, score float64, latencyUs int64)
 	EnclaveResolver     func(r *http.Request) (enclaveType, status, quoteID string, latencyUs int64)
+	EntropyResolver     func(r *http.Request) (source string, minBits float64, beaconRound uint64, latencyUs int64)
 	MaxRetries          int
 	MaxBodyBytes     int64
 }
@@ -412,6 +413,23 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 			}
 			if lat > 0 {
 				w.Header().Set("X-CF-Broker-Enclave-Latency-Us", strconv.FormatInt(lat, 10))
+			}
+		}
+	}
+
+	if p.EntropyResolver != nil && r != nil {
+		if src, minBits, round, lat := p.EntropyResolver(r); src != "" || round > 0 {
+			if src != "" {
+				w.Header().Set("X-CF-Broker-Entropy-Source", src)
+			}
+			if minBits > 0 {
+				w.Header().Set("X-CF-Broker-Entropy-MinBits", strconv.FormatFloat(minBits, 'f', 2, 64))
+			}
+			if round > 0 {
+				w.Header().Set("X-CF-Broker-Entropy-Beacon-Round", strconv.FormatUint(round, 10))
+			}
+			if lat > 0 {
+				w.Header().Set("X-CF-Broker-Entropy-Latency-Us", strconv.FormatInt(lat, 10))
 			}
 		}
 	}

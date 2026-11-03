@@ -14,6 +14,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/compiler"
 	"github.com/kLauncher1/cf-lease-broker/internal/config"
 	"github.com/kLauncher1/cf-lease-broker/internal/enclave"
+	"github.com/kLauncher1/cf-lease-broker/internal/entropy"
 	"github.com/kLauncher1/cf-lease-broker/internal/federation"
 	"github.com/kLauncher1/cf-lease-broker/internal/mesh"
 	"github.com/kLauncher1/cf-lease-broker/internal/mtls"
@@ -70,6 +71,7 @@ type ServerContext struct {
 	dedupHandler      *wasmdedup.DedupHandler
 	scrubberHandler   *scrubber.ScrubberHandler
 	enclaveHandler    *enclave.EnclaveHandler
+	entropyHandler    *entropy.EntropyHandler
 	r2Gateway         *storage.R2Gateway
 	kvCache           *storage.KVCacheLayer
 	webhookDispatcher *storage.WebhookDispatcher
@@ -123,6 +125,7 @@ func buildMux(s *ServerContext) *http.ServeMux {
 		"/api/wasmdedup":   s.dedupHandler,
 		"/api/scrubber":    s.scrubberHandler,
 		"/api/enclave":     s.enclaveHandler,
+		"/api/entropy":     s.entropyHandler,
 	} {
 		regPair(path, h)
 	}

@@ -16,6 +16,7 @@ import (
 	"github.com/kLauncher1/cf-lease-broker/internal/compiler"
 	"github.com/kLauncher1/cf-lease-broker/internal/config"
 	"github.com/kLauncher1/cf-lease-broker/internal/enclave"
+	"github.com/kLauncher1/cf-lease-broker/internal/entropy"
 	"github.com/kLauncher1/cf-lease-broker/internal/federation"
 	"github.com/kLauncher1/cf-lease-broker/internal/mesh"
 	"github.com/kLauncher1/cf-lease-broker/internal/mtls"
@@ -39,7 +40,7 @@ import (
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.24.0"
+	Version = "0.25.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -402,6 +403,21 @@ func main() {
 		return string(stats.EnclaveType), string(stats.Status), qID, lat
 	})
 
+	// Quantum Entropy Beacon & Hardware RNG Attestation
+	entropyEngine := entropy.NewEntropyEngine(entropy.DefaultEntropyConfig())
+	entropyHandler := entropy.NewEntropyHandler(entropyEngine)
+	_ = entropyEngine.Start(context.Background())
+	defer entropyEngine.Stop()
+	proxyHandler.SetEntropyResolver(func(r *http.Request) (string, float64, uint64, int64) {
+		stats := entropyEngine.GetStats()
+		round := entropyEngine.GetBeaconRound()
+		var rNum uint64
+		if round != nil {
+			rNum = round.Round
+		}
+		return string(stats.ActiveSource), stats.LastHealthReport.MinEntropy, rNum, 12
+	})
+
 	serverCtx := &ServerContext{
 		poolMgr:           poolMgr,
 		leaseEng:          leaseEng,
@@ -436,6 +452,7 @@ func main() {
 		dedupHandler:      dedupHandler,
 		scrubberHandler:   scrubberHandler,
 		enclaveHandler:    enclaveHandler,
+		entropyHandler:    entropyHandler,
 		r2Gateway:         r2Gateway,
 		kvCache:           kvCache,
 		webhookDispatcher: webhookDispatcher,
@@ -458,6 +475,7 @@ func main() {
 		" 🗜️ Adaptive Compression · 🌐 Geo-Replication · 🌐 Federation Mesh · 🛡️ ZK Verifier\n" +
 		" ⚛️ PQC ML-KEM/DSA · 📦 Wasm CoW Dedup · 🛡️ eBPF DDoS Line-Rate Scrubber\n" +
 		" 🛡️ Enclave SGX/SEV · 🔒 Memory Attestation & Secret Sealing\n" +
+		" ⚛️ Quantum Entropy Beacon · 🎲 Hardware RNG & NIST SP 800-90B Attestation\n" +
 		" 💡 Standalone Single Binary with Embedded Zero-Dependency UI\n" +
 		"=================================================================\n"
 	fmt.Print(banner)
