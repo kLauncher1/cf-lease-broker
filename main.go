@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kLauncher1/cf-lease-broker/internal/billing"
+	"github.com/kLauncher1/cf-lease-broker/internal/bgp"
 	"github.com/kLauncher1/cf-lease-broker/internal/broker"
 	"github.com/kLauncher1/cf-lease-broker/internal/cloudflare"
 	"github.com/kLauncher1/cf-lease-broker/internal/compiler"
@@ -40,7 +41,7 @@ import (
 
 var (
 	// Version is populated at build time via -ldflags="-X main.Version=..."
-	Version = "0.25.0"
+	Version = "0.26.0"
 	// BuildTime is populated at build time via -ldflags="-X main.BuildTime=..."
 	BuildTime = "development"
 )
@@ -122,11 +123,8 @@ func main() {
 	raftDiscoveryDomain := os.Getenv("CF_RAFT_DISCOVERY_DOMAIN")
 	raftDataDir := os.Getenv("CF_RAFT_DATA_DIR")
 	peerMap := make(map[string]string)
-	if peersRaw := os.Getenv("CF_RAFT_PEERS"); peersRaw != "" {
-		for _, p := range strings.Split(peersRaw, ",") {
-			if p = strings.TrimSpace(p); p == "" {
-				continue
-			}
+	for _, p := range strings.Split(os.Getenv("CF_RAFT_PEERS"), ",") {
+		if p = strings.TrimSpace(p); p != "" {
 			if k, v, ok := strings.Cut(p, "="); ok {
 				peerMap[k] = v
 			} else {
@@ -418,6 +416,20 @@ func main() {
 		return string(stats.ActiveSource), stats.LastHealthReport.MinEntropy, rNum, 12
 	})
 
+	// Dynamic Line-Rate BGP Anycast Prefix Broadcaster
+	bgpEngine := bgp.NewBGPEngine()
+	bgpHandler := bgp.NewBGPHandler(bgpEngine)
+	bgpEngine.Start(context.Background())
+	defer bgpEngine.Stop()
+	proxyHandler.SetBGPResolver(func(r *http.Request) (string, uint32, string, int64) {
+		tier := "enterprise"
+		if r.Header.Get("X-Tenant-ID") == "" {
+			tier = "pro"
+		}
+		pfx, asn, tags, lat := bgpEngine.ResolveRoute(tier, r.URL.Path)
+		return pfx, asn, bgp.FormatCommunityTags(tags), lat
+	})
+
 	serverCtx := &ServerContext{
 		poolMgr:           poolMgr,
 		leaseEng:          leaseEng,
@@ -453,6 +465,7 @@ func main() {
 		scrubberHandler:   scrubberHandler,
 		enclaveHandler:    enclaveHandler,
 		entropyHandler:    entropyHandler,
+		bgpHandler:        bgpHandler,
 		r2Gateway:         r2Gateway,
 		kvCache:           kvCache,
 		webhookDispatcher: webhookDispatcher,
@@ -467,17 +480,14 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	banner := "=================================================================\n" +
-		fmt.Sprintf(" ⚡ CF-Lease-Broker v%s · Multi-Account Cloudflare Resource Broker\n", Version) +
-		fmt.Sprintf(" 📡 Web Dashboard Live at http://localhost:%s\n", port) +
-		" 🔒 Vault/JWT · 🔄 HotReload · 🚀 Compiler · 🤝 Raft · 🛡️ mTLS · 💰 Billing\n" +
-		" 🛰️ Radar · 🔄 Rotator · ⚡ HTTP/3 eBPF · 📦 Wasm Sandbox · 🌐 Mesh · 🩺 Telemetry\n" +
-		" 🗜️ Adaptive Compression · 🌐 Geo-Replication · 🌐 Federation Mesh · 🛡️ ZK Verifier\n" +
-		" ⚛️ PQC ML-KEM/DSA · 📦 Wasm CoW Dedup · 🛡️ eBPF DDoS Line-Rate Scrubber\n" +
-		" 🛡️ Enclave SGX/SEV · 🔒 Memory Attestation & Secret Sealing\n" +
-		" ⚛️ Quantum Entropy Beacon · 🎲 Hardware RNG & NIST SP 800-90B Attestation\n" +
-		" 💡 Standalone Single Binary with Embedded Zero-Dependency UI\n" +
-		"=================================================================\n"
+	banner := fmt.Sprintf("=================================================================\n"+
+		" ⚡ CF-Lease-Broker v%s · Multi-Account Cloudflare Resource Broker\n"+
+		" 📡 Web Dashboard Live at http://localhost:%s\n"+
+		" 🔒 Vault · 🔄 HotReload · 🚀 Compiler · 🤝 Raft · 🛡️ mTLS · 💰 Billing · 🛰️ Radar\n"+
+		" 🔄 Rotator · ⚡ HTTP/3 · 📦 Sandbox · 🌐 Mesh · 🩺 Telemetry · 🗜️ Transcoder\n"+
+		" 🌐 Geo-Replication · 🌐 Federation · 🛡️ ZK Verifier · ⚛️ PQC · 📦 Wasm Dedup\n"+
+		" 🛡️ Scrubber · 🛡️ Enclave SGX/SEV · ⚛️ Entropy Beacon · 🌐 Anycast BGP Broadcaster\n"+
+		"=================================================================\n", Version, port)
 	fmt.Print(banner)
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

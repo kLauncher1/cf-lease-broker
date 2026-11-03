@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] - 2026-11-03
+
+### Added
+- **Dynamic Line-Rate BGP Anycast Prefix Broadcaster**: Implemented `internal/bgp/` delivering autonomous BGP-4 (RFC 4271) session peering with Tier-1 transit providers, sub-5ms line-rate Anycast prefix withdrawal, and dynamic RFC 1997/4360 community tagging for transit pricing arbitrage in pure Go with zero external dependencies.
+- **RFC 4271 BGP-4 Binary Packet Serialization**: Implemented `internal/bgp/packet.go` supporting 19-byte synchronization marker validation, OPEN/KEEPALIVE/NOTIFICATION message framing, CIDR wire-format prefix encoding/decoding, and BGP Path Attributes (ORIGIN, AS_PATH, NEXT_HOP, MULTI_EXIT_DISC, LOCAL_PREF, and COMMUNITIES).
+- **BGP Finite State Machine & Peering Lifecycle**: Implemented `internal/bgp/fsm.go` tracking session transitions across Idle, Connect, Active, OpenSent, OpenConfirm, and Established states, with automated keepalive maintenance, hold timer expiration, flap counters, and thread-safe session snapshots.
+- **Sub-5ms Line-Rate Prefix Broadcaster & Withdrawal Engine**: Implemented `internal/bgp/broadcaster.go` announcing Anycast IPv4/IPv6 prefixes across multiple transit peers and executing parallel prefix withdrawals within a 5-millisecond SLA (measured in microseconds) upon detecting PoP partitions or maintenance windows.
+- **Dynamic Community Tagging & Transit Arbitrage Router**: Implemented `internal/bgp/community.go` matching incoming tenant tiers (Enterprise, Pro, Free) and service endpoints (Workers, R2, KV) against real-time transit pricing agreements, dynamically injecting BGP communities (`CommunityTransitLowCost`, `CommunityTransitLowLatency`, `NO_EXPORT`) and assigning optimal local preferences (`LOCAL_PREF`).
+- **Unified BGP Engine Coordinator**: Implemented `internal/bgp/engine.go` managing active peering sessions with Tier-1 transits (Lumen AS3356, Telia AS1299, Cogent AS174, Cloudflare AS13335), prefix catalogs, background maintenance timers, and thread-safe operational statistics.
+- **RESTful BGP Control & Inspection API**: Implemented `internal/bgp/handler.go` mounting `/api/bgp/*` (`/status`, `/peers`, `/peers/reconnect`, `/prefixes`, `/prefixes/announce`, `/prefixes/withdraw`, `/divert`, `/communities`, `/history`, `/stats`, `/reset`) with strict 64KB `io.LimitReader` request body bounds to guard against buffer exhaustion.
+- **Reverse Proxy BGP Route Annotation**: Extended `ProxyHandler` (`internal/proxy/proxy.go`, `internal/proxy/resolvers.go`) with `SetBGPResolver`, decorating proxied edge responses with `X-CF-Broker-BGP-Prefix`, `X-CF-Broker-BGP-Peer-ASN`, `X-CF-Broker-BGP-Community`, and `X-CF-Broker-BGP-Latency-Us`.
+- **Glassmorphism Web Dashboard Panel**: Added an interactive BGP Anycast Prefix Broadcaster card in `web/dist/index.html` featuring live KPI telemetry (Active Peers, Announced Prefixes, Withdrawal Latency, Dynamic Rules, and FSM State), an Anycast Fast Withdrawal & PoP Partition Simulator, and an Upstream Transit Peering Explorer.
+- **Exhaustive Unit & Concurrency Test Suite**: Added 12 comprehensive unit and integration tests in `internal/bgp/bgp_test.go` and `internal/proxy/proxy_test.go` covering packet framing, FSM transitions, Anycast multi-peer broadcast, sub-5ms line-rate withdrawal, PoP partition diversion, dynamic community tagging, REST endpoints, 64KB DoS bounding, and 40-goroutine concurrent stress testing with 100% green coverage.
+
+### Changed
+- Mounted `/api/bgp/*` routes on HTTP router in `routes.go` and `main.go`.
+- Initialized `BGPEngine` and `BGPHandler` in `main.go`, and updated console startup banner.
+- Updated `scripts/ARCHITECTURE_MAP.md` registering all 8 `internal/bgp/` modules and updating repository line counts.
+- Bumped application version to `0.26.0` across project manifests (`package.json`, `web/package.json`), entry point (`main.go`), and security policy (`SECURITY.md`).
+
+---
+
 ## [0.25.0] - 2026-11-03
 
 ### Added

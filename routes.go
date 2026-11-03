@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kLauncher1/cf-lease-broker/internal/billing"
+	"github.com/kLauncher1/cf-lease-broker/internal/bgp"
 	"github.com/kLauncher1/cf-lease-broker/internal/broker"
 	"github.com/kLauncher1/cf-lease-broker/internal/cloudflare"
 	"github.com/kLauncher1/cf-lease-broker/internal/compiler"
@@ -72,6 +73,7 @@ type ServerContext struct {
 	scrubberHandler   *scrubber.ScrubberHandler
 	enclaveHandler    *enclave.EnclaveHandler
 	entropyHandler    *entropy.EntropyHandler
+	bgpHandler        *bgp.BGPHandler
 	r2Gateway         *storage.R2Gateway
 	kvCache           *storage.KVCacheLayer
 	webhookDispatcher *storage.WebhookDispatcher
@@ -126,6 +128,7 @@ func buildMux(s *ServerContext) *http.ServeMux {
 		"/api/scrubber":    s.scrubberHandler,
 		"/api/enclave":     s.enclaveHandler,
 		"/api/entropy":     s.entropyHandler,
+		"/api/bgp":         s.bgpHandler,
 	} {
 		regPair(path, h)
 	}

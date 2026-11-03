@@ -47,6 +47,7 @@ type ProxyHandler struct {
 	ScrubberResolver    func(r *http.Request) (status string, score float64, latencyUs int64)
 	EnclaveResolver     func(r *http.Request) (enclaveType, status, quoteID string, latencyUs int64)
 	EntropyResolver     func(r *http.Request) (source string, minBits float64, beaconRound uint64, latencyUs int64)
+	BGPResolver         func(r *http.Request) (prefix string, peerASN uint32, community string, latencyUs int64)
 	MaxRetries          int
 	MaxBodyBytes     int64
 }
@@ -430,6 +431,21 @@ func (p *ProxyHandler) forwardResponse(w http.ResponseWriter, r *http.Request, r
 			}
 			if lat > 0 {
 				w.Header().Set("X-CF-Broker-Entropy-Latency-Us", strconv.FormatInt(lat, 10))
+			}
+		}
+	}
+
+	if p.BGPResolver != nil && r != nil {
+		if pfx, asn, comm, lat := p.BGPResolver(r); pfx != "" {
+			w.Header().Set("X-CF-Broker-BGP-Prefix", pfx)
+			if asn > 0 {
+				w.Header().Set("X-CF-Broker-BGP-Peer-ASN", strconv.FormatUint(uint64(asn), 10))
+			}
+			if comm != "" {
+				w.Header().Set("X-CF-Broker-BGP-Community", comm)
+			}
+			if lat > 0 {
+				w.Header().Set("X-CF-Broker-BGP-Latency-Us", strconv.FormatInt(lat, 10))
 			}
 		}
 	}

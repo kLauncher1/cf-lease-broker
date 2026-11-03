@@ -2296,6 +2296,128 @@ export default {
       <div id="entropy-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
     </section>
 
+    <!-- Dynamic Line-Rate BGP Anycast Prefix Broadcaster -->
+    <div class="section-header" id="bgp-section">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="color: #3b82f6;">🌐</span> Dynamic Line-Rate BGP Anycast Prefix Broadcaster (<code style="font-family: 'JetBrains Mono', monospace; color: #3b82f6; font-size: 13px;">/api/bgp/*</code>)
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="action-btn" onclick="fetchBGPStats()" style="font-size: 11px; padding: 4px 10px; background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); color: #60a5fa;">BGP Telemetry</button>
+        <button class="action-btn" onclick="loadBGPState()" style="font-size: 11px; padding: 4px 10px; background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.4); color: #6ee7b7;">Refresh State</button>
+        <button class="action-btn" onclick="resetBGPEngine()" style="font-size: 11px; padding: 4px 10px; background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">Reset BGP</button>
+      </div>
+    </div>
+
+    <section class="card" style="margin-bottom: 24px;">
+      <!-- KPI Metrics Grid -->
+      <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
+        <div class="metric-card" style="border-left: 3px solid #3b82f6;">
+          <div class="metric-label">Active BGP Peers</div>
+          <div class="metric-value" id="bgp-active-peers" style="font-size: 16px; color: #60a5fa;">Loading...</div>
+          <div class="metric-sub" id="bgp-peers-sub" style="font-size: 10px; color: var(--text-muted);">Tier-1 Upstream Transits</div>
+        </div>
+
+        <div class="metric-card" style="border-left: 3px solid #10b981;">
+          <div class="metric-label">Announced Anycast Prefixes</div>
+          <div class="metric-value" id="bgp-announced-prefixes" style="font-size: 16px; color: #34d399;">Loading...</div>
+          <div class="metric-sub" id="bgp-prefixes-sub" style="font-size: 10px; color: var(--text-muted);">IPv4/IPv6 Global Colos</div>
+        </div>
+
+        <div class="metric-card" style="border-left: 3px solid #8b5cf6;">
+          <div class="metric-label">Withdrawal Latency</div>
+          <div class="metric-value" id="bgp-withdrawal-lat" style="font-size: 16px; color: #c084fc;">Loading...</div>
+          <div class="metric-sub" id="bgp-withdrawal-sub" style="font-size: 10px; color: var(--text-muted);">SLA: &lt; 5000 µs (Sub-5ms)</div>
+        </div>
+
+        <div class="metric-card" style="border-left: 3px solid #f59e0b;">
+          <div class="metric-label">Dynamic Communities</div>
+          <div class="metric-value" id="bgp-community-rules" style="font-size: 16px; color: #fbbf24;">Loading...</div>
+          <div class="metric-sub" id="bgp-communities-sub" style="font-size: 10px; color: var(--text-muted);">Pricing Arbitrage Rules</div>
+        </div>
+
+        <div class="metric-card" style="border-left: 3px solid #ec4899;">
+          <div class="metric-label">BGP FSM Status</div>
+          <div class="metric-value" id="bgp-fsm-status" style="font-size: 16px; color: #f472b6;">ESTABLISHED</div>
+          <div class="metric-sub" id="bgp-fsm-sub" style="font-size: 10px; color: var(--text-muted);">RFC 4271 State Machine</div>
+        </div>
+      </div>
+
+      <!-- Controls & Interactive Sandboxes Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px;">
+        <!-- Left: Line-Rate Prefix Withdrawal & PoP Partition Simulator -->
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px;">
+          <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; color: var(--text-main); display: flex; align-items: center; justify-content: space-between;">
+            <span>Line-Rate Anycast Fast Withdrawal</span>
+            <span style="font-size: 10px; padding: 2px 6px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border-radius: 4px;">Sub-5ms Target</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 8px; margin-bottom: 10px;">
+            <div>
+              <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Anycast CIDR</label>
+              <select id="bgp-withdraw-cidr" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-main); border-radius: 6px; padding: 6px 8px; font-size: 12px;">
+                <option value="198.51.100.0/24">198.51.100.0/24 (Anycast-Primary)</option>
+                <option value="203.0.113.0/24">203.0.113.0/24 (Anycast-Standby)</option>
+              </select>
+            </div>
+            <div>
+              <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Action</label>
+              <button class="action-btn" onclick="triggerBGPWithdrawal()" style="width: 100%; box-sizing: border-box; background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5; font-size: 12px; padding: 6px 8px;">Withdraw</button>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button class="action-btn" onclick="simulateBGPPoPDiversion('SFO', 'IAD')" style="background: rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.4); color: #fbbf24; font-size: 12px;">Divert PoP SFO &rarr; IAD</button>
+            <button class="action-btn" onclick="reannounceDefaultPrefixes()" style="background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.4); color: #34d399; font-size: 12px;">Re-announce All</button>
+          </div>
+
+          <div id="bgp-withdrawal-result" style="padding: 10px; background: rgba(0,0,0,0.25); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); min-height: 80px; max-height: 140px; overflow-y: auto;">
+            Withdraw active Anycast IP prefixes with microsecond precision or simulate PoP link cut diversion across Tier-1 transits.
+          </div>
+        </div>
+
+        <!-- Right: Dynamic Community Tagging & Peering Explorer -->
+        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 16px;">
+          <div style="font-weight: 600; font-size: 13px; margin-bottom: 12px; color: var(--text-main); display: flex; align-items: center; justify-content: space-between;">
+            <span>Transit Community &amp; Pricing Arbitrage</span>
+            <span style="font-size: 10px; padding: 2px 6px; background: rgba(16, 185, 129, 0.15); color: #34d399; border-radius: 4px;">RFC 1997 / 4360</span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+            <div>
+              <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Tenant Tier</label>
+              <select id="bgp-tier-select" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-main); border-radius: 6px; padding: 6px 8px; font-size: 12px;">
+                <option value="enterprise">Enterprise (Low Latency)</option>
+                <option value="pro">Pro (Balanced)</option>
+                <option value="free">Free (Cost Optimal)</option>
+              </select>
+            </div>
+            <div>
+              <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Service</label>
+              <select id="bgp-service-select" style="width: 100%; box-sizing: border-box; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-main); border-radius: 6px; padding: 6px 8px; font-size: 12px;">
+                <option value="workers">Workers API</option>
+                <option value="r2">R2 Storage</option>
+                <option value="kv">KV Cache</option>
+              </select>
+            </div>
+            <div>
+              <label style="display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Action</label>
+              <button class="action-btn" onclick="resolveBGPRoute()" style="width: 100%; box-sizing: border-box; background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.4); color: #60a5fa; font-size: 12px; padding: 6px 8px;">Resolve Route</button>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button class="action-btn" onclick="listBGPPeersModal()" style="background: rgba(139, 92, 246, 0.2); border-color: rgba(139, 92, 246, 0.4); color: #c084fc; font-size: 12px;">Inspect Peering Sessions</button>
+          </div>
+
+          <div id="bgp-routing-result" style="padding: 10px; background: rgba(0,0,0,0.25); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); min-height: 80px; max-height: 140px; overflow-y: auto;">
+            Evaluate real-time transit pricing and peering agreements to inject BGP Community tags (e.g. 64512:100, NO_EXPORT) and LOCAL_PREF.
+          </div>
+        </div>
+      </div>
+
+      <div id="bgp-diag-result" style="display: none; margin-top: 14px; padding: 12px; background: var(--bg-base); border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-subtle); max-height: 180px; overflow-y: auto;"></div>
+    </section>
+
 
     <div class="section-header">
       <span class="section-title">Active Dynamic Resource Leases</span>
@@ -6805,6 +6927,210 @@ export default {
       }
     }
 
+    // Dynamic Line-Rate BGP Anycast Prefix Broadcaster
+    async function loadBGPState() {
+      try {
+        const [statsRes, peersRes, prefixesRes, rulesRes] = await Promise.all([
+          fetch('/api/bgp/stats').then(r => r.json()).catch(() => null),
+          fetch('/api/bgp/peers').then(r => r.json()).catch(() => []),
+          fetch('/api/bgp/prefixes').then(r => r.json()).catch(() => []),
+          fetch('/api/bgp/communities').then(r => r.json()).catch(() => []),
+        ]);
+
+        if (statsRes) {
+          document.getElementById('bgp-active-peers').textContent = (statsRes.active_peers_count || 0) + ' Sessions';
+          document.getElementById('bgp-announced-prefixes').textContent = (statsRes.announced_prefixes || 0) + ' Prefixes';
+          const avgUs = statsRes.avg_withdrawal_us ? statsRes.avg_withdrawal_us.toFixed(1) : '0.0';
+          document.getElementById('bgp-withdrawal-lat').textContent = avgUs + ' µs';
+          document.getElementById('bgp-withdrawal-sub').textContent = 'SLA: <= 5000 µs (Violations: ' + (statsRes.sla_violation_count || 0) + ')';
+        }
+        if (rulesRes && Array.isArray(rulesRes)) {
+          document.getElementById('bgp-community-rules').textContent = rulesRes.length + ' Policies';
+        }
+        if (peersRes && Array.isArray(peersRes)) {
+          const established = peersRes.filter(p => p.state === 'ESTABLISHED').length;
+          document.getElementById('bgp-fsm-status').textContent = established + '/' + peersRes.length + ' ESTABLISHED';
+        }
+      } catch (err) {
+        console.warn('Failed to load BGP state:', err);
+      }
+    }
+
+    async function fetchBGPStats() {
+      const diag = document.getElementById('bgp-diag-result');
+      diag.style.display = 'block';
+      diag.innerHTML = 'Loading BGP telemetry...';
+      try {
+        const res = await fetch('/api/bgp/stats');
+        const data = await res.json();
+        diag.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <strong style="color: #3b82f6;">BGP Line-Rate Broadcaster Telemetry</strong>
+            <button onclick="document.getElementById('bgp-diag-result').style.display='none'" style="background: none; border: none; color: #94a3b8; cursor: pointer;">✕</button>
+          </div>
+          <pre style="margin: 0; white-space: pre-wrap; color: #e2e8f0; font-size: 11px;">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+        `;
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #f87171;">Failed to fetch stats: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function triggerBGPWithdrawal() {
+      const cidr = document.getElementById('bgp-withdraw-cidr').value;
+      const resEl = document.getElementById('bgp-withdrawal-result');
+      resEl.innerHTML = '<span style="color: #94a3b8;">Executing sub-5ms line-rate withdrawal...</span>';
+      try {
+        const res = await fetch('/api/bgp/prefixes/withdraw', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cidr: cidr, reason: 'Operator manual line-rate withdrawal' })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          const slaBadge = data.within_sla ? '<span style="color: #34d399;">✓ WITHIN 5ms SLA</span>' : '<span style="color: #f87171;">✗ SLA VIOLATION</span>';
+          resEl.innerHTML = `
+            <div style="color: #fca5a5; font-weight: 600; margin-bottom: 4px;">Prefix Withdrawn: ${escapeHtml(data.cidr)}</div>
+            <div style="color: #e2e8f0;">Duration: <strong style="color: #c084fc;">${data.duration_us} µs</strong> (${slaBadge})</div>
+            <div style="color: var(--text-muted);">Peers Notified: ${data.peers_notified} Tier-1 sessions</div>
+            <div style="color: var(--text-muted);">Reason: ${escapeHtml(data.reason)}</div>
+          `;
+          loadBGPState();
+        } else {
+          resEl.innerHTML = `<span style="color: #f87171;">Withdrawal failed: ${escapeHtml(data.error || 'unknown error')}</span>`;
+        }
+      } catch (err) {
+        resEl.innerHTML = `<span style="color: #f87171;">Request error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function simulateBGPPoPDiversion(failedPoP, targetPoP) {
+      const resEl = document.getElementById('bgp-withdrawal-result');
+      resEl.innerHTML = '<span style="color: #94a3b8;">Simulating PoP link failure and traffic diversion...</span>';
+      try {
+        const res = await fetch('/api/bgp/divert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ failed_pop: failedPoP, target_pop: targetPoP, reason: 'Carrier partition event' })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          resEl.innerHTML = `
+            <div style="color: #fbbf24; font-weight: 600; margin-bottom: 4px;">Traffic Diverted: ${escapeHtml(data.failed_pop)} &rarr; ${escapeHtml(data.alternative_pop)}</div>
+            <div style="color: #e2e8f0;">Total Diversion Latency: <strong style="color: #c084fc;">${data.total_duration_us} µs</strong></div>
+            <div style="color: var(--text-muted);">Affected Prefixes: ${(data.affected_prefixes || []).join(', ')}</div>
+            <div style="color: #34d399;">Withdrawals Executed: ${(data.withdrawal_events || []).length} across active peers</div>
+          `;
+          loadBGPState();
+        } else {
+          resEl.innerHTML = `<span style="color: #f87171;">Diversion failed: ${escapeHtml(data.error || 'unknown error')}</span>`;
+        }
+      } catch (err) {
+        resEl.innerHTML = `<span style="color: #f87171;">Request error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function reannounceDefaultPrefixes() {
+      const resEl = document.getElementById('bgp-withdrawal-result');
+      resEl.innerHTML = '<span style="color: #94a3b8;">Re-announcing default Anycast prefixes...</span>';
+      try {
+        await fetch('/api/bgp/prefixes/announce', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cidr: '198.51.100.0/24', origin_asn: 64512, target_pops: ['SFO', 'IAD', 'LHR', 'NRT'] })
+        });
+        await fetch('/api/bgp/prefixes/announce', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cidr: '203.0.113.0/24', origin_asn: 64512, target_pops: ['SFO', 'FRA', 'SIN', 'ICN'] })
+        });
+        resEl.innerHTML = '<span style="color: #34d399;">All default Anycast prefixes re-announced to upstream peers.</span>';
+        loadBGPState();
+      } catch (err) {
+        resEl.innerHTML = `<span style="color: #f87171;">Failed to re-announce: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function resolveBGPRoute() {
+      const tier = document.getElementById('bgp-tier-select').value;
+      const service = document.getElementById('bgp-service-select').value;
+      const resEl = document.getElementById('bgp-routing-result');
+      resEl.innerHTML = '<span style="color: #94a3b8;">Evaluating transit pricing & peering rules...</span>';
+      try {
+        const rules = await fetch('/api/bgp/communities').then(r => r.json());
+        let matched = null;
+        for (const r of rules) {
+          const tierMatch = r.tenant_tier === '*' || r.tenant_tier.toLowerCase() === tier;
+          const svcMatch = r.service_pattern === '*' || service.includes(r.service_pattern);
+          if (tierMatch && svcMatch) {
+            matched = r;
+            break;
+          }
+        }
+        if (!matched) {
+          matched = { rule_id: 'fallback', preferred_asn: 13335, local_preference: 100, assigned_tags: ['64512:300'] };
+        }
+        resEl.innerHTML = `
+          <div style="color: #60a5fa; font-weight: 600; margin-bottom: 4px;">Matched Policy: ${escapeHtml(matched.rule_id || 'default')}</div>
+          <div style="color: #e2e8f0;">Upstream Transit: <strong style="color: #34d399;">AS${matched.preferred_asn}</strong> | LOCAL_PREF: <strong>${matched.local_preference}</strong></div>
+          <div style="color: #fbbf24;">Dynamic Tags: ${(matched.assigned_tags || []).join(', ')}</div>
+          <div style="color: var(--text-muted); font-size: 10px;">Max Transit Cost: $${matched.max_cost_per_mb || 0.02}/MB</div>
+        `;
+      } catch (err) {
+        resEl.innerHTML = `<span style="color: #f87171;">Routing resolution error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function listBGPPeersModal() {
+      const diag = document.getElementById('bgp-diag-result');
+      diag.style.display = 'block';
+      diag.innerHTML = 'Fetching peering sessions...';
+      try {
+        const res = await fetch('/api/bgp/peers');
+        const peers = await res.json();
+        let rows = peers.map(p => `
+          <tr>
+            <td style="padding: 6px; border-bottom: 1px solid var(--border-subtle); color: #60a5fa;">AS${p.peer_asn} (${escapeHtml(p.tier1_provider || 'Transit')})</td>
+            <td style="padding: 6px; border-bottom: 1px solid var(--border-subtle); font-family: monospace;">${escapeHtml(p.peer_ip)}</td>
+            <td style="padding: 6px; border-bottom: 1px solid var(--border-subtle); color: ${p.state === 'ESTABLISHED' ? '#34d399' : '#fbbf24'};">${p.state}</td>
+            <td style="padding: 6px; border-bottom: 1px solid var(--border-subtle); font-family: monospace;">$${p.transit_cost_per_mb}/MB</td>
+            <td style="padding: 6px; border-bottom: 1px solid var(--border-subtle);">${p.packets_sent} / ${p.packets_recv}</td>
+          </tr>
+        `).join('');
+        diag.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <strong style="color: #c084fc;">Upstream Tier-1 Transit Peering Sessions</strong>
+            <button onclick="document.getElementById('bgp-diag-result').style.display='none'" style="background: none; border: none; color: #94a3b8; cursor: pointer;">✕</button>
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <thead>
+              <tr style="text-align: left; color: var(--text-muted); border-bottom: 1px solid var(--border-subtle);">
+                <th style="padding: 6px;">Peer ASN</th>
+                <th style="padding: 6px;">Peer IP</th>
+                <th style="padding: 6px;">FSM State</th>
+                <th style="padding: 6px;">Transit Rate</th>
+                <th style="padding: 6px;">Packets Sent/Recv</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      } catch (err) {
+        diag.innerHTML = `<span style="color: #f87171;">Failed to fetch peers: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    async function resetBGPEngine() {
+      if (!confirm('Reset BGP Anycast Broadcaster and restore default peers?')) return;
+      try {
+        await fetch('/api/bgp/reset', { method: 'POST' });
+        loadBGPState();
+        document.getElementById('bgp-withdrawal-result').innerHTML = '<span style="color: #34d399;">BGP broadcaster state reset to defaults.</span>';
+        document.getElementById('bgp-routing-result').innerHTML = '<span style="color: #34d399;">BGP routing policies reset.</span>';
+      } catch (err) {
+        alert('Reset failed: ' + err.message);
+      }
+    }
+
     applyRadarPreset();
     applySandboxPreset();
     applyTranscoderPreset('json');
@@ -6818,6 +7144,7 @@ export default {
     loadScrubberState();
     loadEnclaveState();
     loadEntropyState();
+    loadBGPState();
 
     loadState();
     setInterval(loadState, 2000);

@@ -84,3 +84,8 @@ func (p *ProxyHandler) SetEntropyResolver(fn func(r *http.Request) (source strin
 	p.EntropyResolver = fn
 }
 
+// SetBGPResolver registers a dynamic line-rate BGP Anycast prefix and transit community resolver for proxy responses.
+func (p *ProxyHandler) SetBGPResolver(fn func(r *http.Request) (prefix string, peerASN uint32, community string, latencyUs int64)) {
+	p.BGPResolver = fn
+}
+
