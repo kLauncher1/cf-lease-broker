@@ -955,3 +955,43 @@ func TestProxyEntropyResolverIntegration(t *testing.T) {
 	}
 }
 
+func TestProxyBGPResolverIntegration(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"bgp_ok"}`))
+	}))
+	defer backend.Close()
+
+	pm := broker.NewPoolManager()
+	le := broker.NewLeaseEngine(pm)
+
+	handler := NewProxyHandler(pm, le)
+	handler.TargetURLBuilder = func(service, accountID, subPath string) string {
+		return backend.URL + "/" + subPath
+	}
+
+	handler.SetBGPResolver(func(r *http.Request) (string, uint32, string, int64) {
+		return "198.51.100.0/24", 3356, "64512:200,NO_EXPORT", 24
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/worker-service/bgp-route", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-CF-Broker-BGP-Prefix") != "198.51.100.0/24" {
+		t.Fatalf("expected prefix '198.51.100.0/24', got '%s'", rec.Header().Get("X-CF-Broker-BGP-Prefix"))
+	}
+	if rec.Header().Get("X-CF-Broker-BGP-Peer-ASN") != "3356" {
+		t.Fatalf("expected peer ASN '3356', got '%s'", rec.Header().Get("X-CF-Broker-BGP-Peer-ASN"))
+	}
+	if rec.Header().Get("X-CF-Broker-BGP-Community") != "64512:200,NO_EXPORT" {
+		t.Fatalf("expected community '64512:200,NO_EXPORT', got '%s'", rec.Header().Get("X-CF-Broker-BGP-Community"))
+	}
+	if rec.Header().Get("X-CF-Broker-BGP-Latency-Us") != "24" {
+		t.Fatalf("expected latency us '24', got '%s'", rec.Header().Get("X-CF-Broker-BGP-Latency-Us"))
+	}
+}
+
